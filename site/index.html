@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Agent Roadmap</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column, status strip on top, phases as a vertical ledger, tables for modules and risks. */
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --fg:#1b2330; --muted:#5b6678; --line:#dfe3ea;
+  --accent:#0f6e6e; --accent-soft:#dff1f0;
+  --done:#1f7a46; --done-bg:#def3e6; --next:#9a5b00; --next-bg:#fdeccf; --todo:#4a5568; --todo-bg:#e8ebf0; --risk:#b3261e; --risk-bg:#fbe3e1;
+  --f-display:'Space Grotesk',system-ui,sans-serif; --f-body:'Inter',system-ui,sans-serif; --f-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --surface:#1a2029; --fg:#e7ebf1; --muted:#98a3b5; --line:#2b3340;
+  --accent:#5fc7c4; --accent-soft:#16312f;
+  --done:#6fd19a; --done-bg:#16301f; --next:#f0b862; --next-bg:#3a2a10; --todo:#aab4c4; --todo-bg:#262d39; --risk:#ff8f86; --risk-bg:#3b1a18; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --surface:#1a2029; --fg:#e7ebf1; --muted:#98a3b5; --line:#2b3340;
+  --accent:#5fc7c4; --accent-soft:#16312f;
+  --done:#6fd19a; --done-bg:#16301f; --next:#f0b862; --next-bg:#3a2a10; --todo:#aab4c4; --todo-bg:#262d39; --risk:#ff8f86; --risk-bg:#3b1a18; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--f-body);padding-block:32px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.2}
+h1{font-size:clamp(28px,5vw,38px);font-weight:700}
+h2{font-size:22px;font-weight:700;margin-bottom:12px}
+h3{font-size:16px;font-weight:700}
+p{margin:0}.lede{color:var(--muted);max-width:65ch;margin-top:8px}
+code,.mono{font-family:var(--f-mono);font-size:13px}
+.pill{display:inline-block;font:600 11px/1 var(--f-body);letter-spacing:.06em;text-transform:uppercase;padding:5px 8px;border-radius:4px;white-space:nowrap}
+.done{background:var(--done-bg);color:var(--done)}.next{background:var(--next-bg);color:var(--next)}.todo{background:var(--todo-bg);color:var(--todo)}.risk{background:var(--risk-bg);color:var(--risk)}
+.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.strip div{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px;min-width:0}
+.strip b{display:block;font:700 22px var(--f-display);font-variant-numeric:tabular-nums}.strip span{color:var(--muted);font-size:13px}
+.wrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 12px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+.phase{display:grid;grid-template-columns:120px 1fr;gap:16px;padding:16px 0;border-top:1px solid var(--line)}
+.phase:last-child{border-bottom:1px solid var(--line)}
+.phase .when{display:flex;flex-direction:column;gap:8px;align-items:flex-start;color:var(--muted);font-size:13px}
+.phase>div{min-width:0}.phase ul{margin:8px 0 0;padding-left:18px}.phase li{margin:2px 0}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px 16px;min-width:0}
+.box ul{margin:8px 0 0;padding-left:18px}
+.callout{background:var(--accent-soft);border-radius:6px;padding:12px 16px}
+pre.mermaid{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px;overflow-x:auto;margin:0}
+a{color:var(--accent)}
+@media(max-width:560px){.phase{grid-template-columns:1fr;gap:8px}.phase .when{flex-direction:row;align-items:center;gap:12px}}
+</style>
+</head><body>
+<main>
+<header>
+  <h1>Job Agent Roadmap</h1>
+  <p class="lede">This page is the project roadmap. The app itself runs on your own computer (see the repository README) because it needs a Node server, so it cannot run on GitHub Pages. A local agent that reads your resume, searches Naukri, Hirist, iimjobs, LinkedIn and company career pages through a Playwright plugin, ranks jobs against your profile, and applies after you approve or automatically within limits you set.</p>
+</header>
+
+<section class="strip" aria-label="Status">
+  <div><b>1 of 5</b><span>portals wired (Naukri)</span></div>
+  <div><b>Phase 1</b><span>MVP built, tested locally</span></div>
+  <div><b>0</b><span>apply flows built</span></div>
+  <div><b>Local</b><span>data stays on your machine</span></div>
+</section>
+
+<section>
+  <h2>How it fits together</h2>
+  <pre class="mermaid">
+flowchart LR
+  R[Resume PDF or TXT] --> P[Resume parser<br/>Claude]
+  P --> DB[(SQLite)]
+  PR[Preferences] --> DB
+  DB --> S[Searcher]
+  S --> N[Naukri]
+  S --> H[Hirist]
+  S --> I[iimjobs]
+  S --> L[LinkedIn]
+  S --> C[Career pages]
+  N & H & I & L & C --> M[Matcher + dedupe]
+  M --> Q{Approval queue}
+  Q -->|approve| A[Apply engine]
+  Q -->|auto, score over threshold| A
+  A --> T[Tracker + audit log]
+  </pre>
+  <p class="lede">Every portal gets one adapter with the same shape: how to read a listing and, in Phase 2, how to apply. Each portal runs in one of two modes, set by what its terms allow.</p>
+  <div class="two" style="margin-top:16px">
+    <div class="box"><h3>Direct mode</h3><ul><li>For portals and career pages that allow automated reading</li><li>The agent fetches listings itself on a schedule</li></ul></div>
+    <div class="box"><h3>Plugin mode</h3><ul><li>For portals that restrict scraping: Naukri and LinkedIn</li><li>A browser extension runs in your own logged-in tab</li><li>It reads only the page you have open, and only when you click Send to Job Agent</li><li>No background crawling, no automated page loads</li></ul></div>
+  </div>
+</section>
+
+<section>
+  <h2>Phases</h2>
+  <div>
+    <div class="phase"><div class="when"><span class="pill done">Built</span>Phase 1</div><div>
+      <h3>MVP: parse, search, rank, approve</h3>
+      <ul><li>Resume upload (PDF or TXT) parsed into skills, years and target roles</li><li>Preferences: roles, location, minimum score, blocklist</li><li>Browser extension (plugin mode) sends Naukri and LinkedIn listings from your open tab</li><li>0–100 score from skill overlap, title match and experience fit; duplicate jobs merged</li><li>Approval queue with Approve and open, Skip, Mark applied</li></ul></div></div>
+    <div class="phase"><div class="when"><span class="pill next">Next</span>Phase 2</div><div>
+      <h3>Apply flow and auto-apply</h3>
+      <ul><li>Naukri apply and LinkedIn Easy Apply submission, through the extension so it happens in your own tab</li><li>Answer bank for screening questions, filled only from your resume and saved answers</li><li>Auto-apply mode with guardrails (see below)</li><li>Screenshot and submitted answers saved for every application</li></ul></div></div>
+    <div class="phase"><div class="when"><span class="pill todo">Planned</span>Phase 3</div><div>
+      <h3>More portals and scheduling</h3>
+      <ul><li>Hirist and iimjobs adapters, in plugin mode unless their terms allow direct reading</li><li>Scheduled daily runs, email or WhatsApp alert when new matches arrive</li><li>Plugin health check that flags a portal whose layout changed</li></ul></div></div>
+    <div class="phase"><div class="when"><span class="pill todo">Planned</span>Phase 4</div><div>
+      <h3>Company career pages</h3>
+      <ul><li>You add company URLs; the agent finds openings and the apply link</li><li>Templates for common applicant systems: Greenhouse, Lever, Workday</li><li>Unknown pages open for you to finish by hand</li></ul></div></div>
+    <div class="phase"><div class="when"><span class="pill todo">Planned</span>Phase 5</div><div>
+      <h3>Tailoring and analytics</h3>
+      <ul><li>Per-job resume tweaks and cover note from the job description</li><li>Follow-up reminders</li><li>Which roles, portals and score bands actually get replies</li></ul></div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Approval and auto-apply</h2>
+  <div class="two">
+    <div class="box"><h3>Ask mode (default)</h3><ul><li>Agent shows the job, score, reasons and the answers it would send</li><li>You approve, edit or skip each one</li><li>Nothing is submitted without a tap</li></ul></div>
+    <div class="box"><h3>Auto mode (optional, off by default)</h3><ul><li>Minimum match score you choose</li><li>Daily cap, for example 20 applications</li><li>Company and keyword blocklist</li><li>Unknown screening question: stop and ask, never guess</li><li>One-click kill switch</li></ul></div>
+  </div>
+</section>
+
+<section>
+  <h2>Modules</h2>
+  <div class="wrap"><table>
+    <thead><tr><th>Module</th><th>What it does</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Resume parser</td><td>PDF or text into a structured profile using Claude</td><td><span class="pill done">Built</span></td></tr>
+      <tr><td>Preferences</td><td>Roles, location, minimum score, blocklist</td><td><span class="pill done">Built</span></td></tr>
+      <tr><td>Browser extension</td><td>Plugin mode for Naukri and LinkedIn listings. Selectors not yet checked against the live sites</td><td><span class="pill next">Built, untested</span></td></tr>
+      <tr><td>Matcher and dedupe</td><td>Score and merge the same job across portals</td><td><span class="pill done">Built</span></td></tr>
+      <tr><td>Approval queue and tracker</td><td>New, approved, applied, skipped</td><td><span class="pill done">Built</span></td></tr>
+      <tr><td>Apply engine</td><td>Fill forms, upload resume, submit, log</td><td><span class="pill todo">Planned</span></td></tr>
+      <tr><td>Hirist, iimjobs, LinkedIn plugins</td><td>Search and apply</td><td><span class="pill todo">Planned</span></td></tr>
+      <tr><td>Career-page crawler</td><td>Generic openings finder and applicant-system templates</td><td><span class="pill todo">Planned</span></td></tr>
+      <tr><td>Scheduler and alerts</td><td>Daily runs and notifications</td><td><span class="pill todo">Planned</span></td></tr>
+    </tbody></table></div>
+</section>
+
+<section>
+  <h2>Risks to settle before Phase 2</h2>
+  <div class="wrap"><table>
+    <thead><tr><th>Risk</th><th>What could happen</th><th>Mitigation</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill risk">Terms</span> Portal rules</td><td>LinkedIn and Naukri prohibit automated applying. Accounts can be restricted or banned.</td><td>Ask mode by default, human-paced browsing, low daily volume, a clear warning before auto mode is switched on.</td></tr>
+      <tr><td><span class="pill risk">Accuracy</span> Invented answers</td><td>The agent states skills or salary you do not have.</td><td>Answers come only from the resume and your saved answers; anything else is sent to you.</td></tr>
+      <tr><td><span class="pill risk">Fragility</span> Layout changes</td><td>A portal redesign breaks its plugin silently.</td><td>Health check per plugin and an alert when a search returns zero results.</td></tr>
+      <tr><td><span class="pill risk">Privacy</span> Personal data</td><td>Resume details leave your machine.</td><td>Everything is stored locally; only the text needed for parsing goes to the Claude API.</td></tr>
+    </tbody></table></div>
+</section>
+
+<section>
+  <h2>Open decisions</h2>
+  <div class="callout"><ul style="margin:0;padding-left:18px">
+    <li>Personal tool or product for many users. A product needs accounts and a legal review of each portal's terms.</li>
+    <li>Which portal gets apply support first. Recommended: Naukri, then LinkedIn Easy Apply.</li>
+    <li>Auto-apply daily cap and minimum score defaults.</li>
+  </ul></div>
+</section>
+</main>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });
+</script>
+</body></html>

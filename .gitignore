@@ -1,0 +1,5 @@
+jobs.db
+.browser/
+node_modules/
+web/dist/
+*.zip

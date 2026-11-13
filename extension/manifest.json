@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Job Agent",
+  "version": "0.1",
+  "description": "Sends the job listings you are viewing to your local Job Agent.",
+  "host_permissions": ["http://127.0.0.1:3000/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [{
+    "matches": ["https://www.naukri.com/*", "https://www.linkedin.com/jobs/*"],
+    "js": ["content.js"]
+  }]
+}
