@@ -52,13 +52,13 @@ export const api = {
     } satisfies EPrefs);
   },
   prefs: async (p: Prefs) => write('prefs', p),
-  search: async () => {
+  search: async (onSource?: (r: { adapter: string; name: string; status: string; reason: string; found: number }) => void) => {
     const { profile, prefs } = needProfile();
     const query = { roles: prefs.roles, locations: prefs.locations, companies: prefs.companies as EPrefs['companies'], adzuna: prefs.adzuna };
-    const found = await Promise.all(SOURCES.map(a => a.search(query))); // each adapter reports its own failure
+    const found = await Promise.all(SOURCES.map(async a => { const r = await a.search(query); onSource?.({ adapter: r.adapter, name: r.name, status: r.status, reason: r.reason, found: r.jobs.length }); return r; })); // each adapter reports its own failure; the UI shows each as it lands
     const jobs = read<EJob[]>('jobs', []);
     const checked_at = new Date().toISOString();
-    const results = found.map(r => ({ adapter: r.adapter, name: r.name, status: r.status, reason: r.reason, found: r.jobs.length, checked_at, ...ingest(r.jobs, profile, prefs, jobs) }));
+    const results = found.map(r => ({ adapter: r.adapter, name: r.name, status: r.status, reason: r.reason, found: r.jobs.length, checked_at, ...(c => ({ added: c.added, duplicate: c.duplicate }))(ingest(r.jobs, profile, prefs, jobs)) }));
     write('jobs', jobs);
     write('runs', results.map(({ adapter, name, status, reason, found, checked_at }) => ({ adapter, name, status, reason, found, checked_at })));
     return { results };
