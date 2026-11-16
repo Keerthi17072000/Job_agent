@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { api, type Job, type Prefs, type Profile, type Run, type State } from './api.ts';
+import { api, PORTALS, type Job, type Prefs, type Profile, type Run, type State } from './api.ts';
 
 export interface Scan { running: boolean; done: number; total: number; fin: Record<string, Run>; phase: string }
 export interface Ctx {
+  ext: string; portalBusy: string; portalSearch: (id: string) => Promise<void>; portalSearchAll: () => Promise<void>; checkExtension: () => Promise<void>;
   st: State | null; busy: boolean; msg: string; setMsg: (m: string) => void; scan: Scan;
   load: () => Promise<void>; upload: (f?: File) => Promise<void>; runScan: (fresh?: boolean) => Promise<void>; cancelScan: () => void; importExt: () => Promise<void>;
   updateJob: (id: string, patch: Partial<Pick<Job, 'status' | 'saved' | 'notes'>>) => Promise<void>;
@@ -18,6 +19,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [msg, setMsg] = useState('');
   const [scan, setScan] = useState<Scan>({ running: false, done: 0, total: 0, fin: {}, phase: '' });
   const abort = useRef<AbortController | null>(null);
+  const [ext, setExt] = useState(''), [portalBusy, setPortalBusy] = useState('');
+  const checkExtension = useCallback(async () => setExt(await api.extensionStatus()), []);
+  useEffect(() => { void checkExtension(); const t = setTimeout(checkExtension, 2500); return () => clearTimeout(t); }, [checkExtension]); // the content script may attach just after load
 
   const load = useCallback(async () => setSt(await api.state()), []);
   useEffect(() => { api.init().then(load).catch(e => setMsg((e as Error).message)); }, [load]);
@@ -49,7 +53,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!st.lastSearch || Date.now() - +new Date(st.lastSearch) > 24 * 3600e3) void runScan();
   }, [st, runScan]);
 
+  const describe = (r: { name: string; found: number; added: number; blocked?: string; error?: string }) =>
+    r.blocked ? `${r.name} asked for a login or verification. Its tab is open: finish that yourself, then search again.` : r.error ? `${r.name}: ${r.error}` : `${r.name}: ${r.found} listings read, ${r.added} new.`;
+  const portalSearch = async (id: string) => {
+    setPortalBusy(id); setBusy(true); setMsg(`Searching ${PORTALS.find(p => p.id === id)?.name} through your browser…`);
+    try { setMsg(describe(await api.portalSearch(id))); await load(); } catch (e) { setMsg((e as Error).message); } finally { setPortalBusy(''); setBusy(false); }
+  };
+  const portalSearchAll = async () => {
+    setBusy(true);
+    try {
+      for (const p of PORTALS.filter(x => x.extension)) {
+        setPortalBusy(p.id); setMsg(`Searching ${p.name} through your browser…`);
+        const r = await api.portalSearch(p.id); setMsg(describe(r)); await load();
+        await new Promise(res => setTimeout(res, 3500)); // unhurried: one page per portal
+      }
+      setMsg('Portal searches finished.');
+    } catch (e) { setMsg((e as Error).message); } finally { setPortalBusy(''); setBusy(false); }
+  };
+
   const ctx: Ctx = {
+    ext, portalBusy, portalSearch, portalSearchAll, checkExtension,
     st, busy, msg, setMsg, scan, load, runScan, cancelScan: () => abort.current?.abort(),
     upload: async f => {
       if (!f) return;

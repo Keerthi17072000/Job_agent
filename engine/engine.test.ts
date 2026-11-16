@@ -176,3 +176,30 @@ test('AI provider: untrusted resume text cannot change the output shape; replies
     await assert.rejects(makeAi('claude', '').extractProfile('x'), /key/);
   } finally { globalThis.fetch = real; }
 });
+
+// ---- more real-world layouts ----
+const LAYOUTS = {
+  stacked: `RAHUL SHARMA\nSenior Software Engineer\nPune, Maharashtra | rahul.sharma@example.com | +91-98200-11223\n\nPROFESSIONAL SUMMARY\nBackend engineer with 8 years in fintech.\n\nTECHNICAL SKILLS\nLanguages: Java, Python | Frameworks: Spring Boot, Django\nDatabases: PostgreSQL, MongoDB | Cloud: AWS, Docker, Kubernetes\n\nWORK EXPERIENCE\nPaySecure Technologies | Pune\nSenior Software Engineer\n03/2019 – Present\n• Designed payment microservices on Kafka\n• Led a team of 4\nFinEdge Solutions, Mumbai\nSoftware Engineer\nJul'15 – Feb 2019\n• Built reporting APIs\n\nEDUCATION\nBachelor of Engineering in Computer Science – Pune University (2011–2015)\n\nCERTIFICATIONS\nAWS Certified Developer\nOracle Certified Java Programmer`,
+  oldestFirst: `Neha Gupta\nHyderabad\nKEY SKILLS\nSEO, Google Analytics, Content Marketing; Email Marketing\nEMPLOYMENT HISTORY\nDigital Marketing Executive, AdWorks (2014 - 2017)\nMarketing Manager, BrightCo (2017 - Present)\nEDUCATION\nMBA Marketing, Osmania University, 2014`,
+  labels: `Curriculum Vitae\nName: Vikram Singh\nLocation: Chennai\nSKILLS\nTally ERP, GST, TDS, Accounts Payable\nEXPERIENCE\nAccounts Executive at Sunrise Traders, Jan 2018 to Dec 2022\nEDUCATION\nB.Com, Madras University 2017`,
+};
+test('stacked layouts: company/title/dates on separate lines, numeric and apostrophe dates, label|label skills', () => {
+  const p = parseLocal(LAYOUTS.stacked, new Date('2024-06-01'));
+  assert.equal(p.name, 'RAHUL SHARMA'); assert.equal(p.email, 'rahul.sharma@example.com'); assert.match(p.phone, /98200/); assert.equal(p.location, 'Pune');
+  assert.deepEqual(p.experience.map(e => [e.title, e.company, e.start, e.end]), [['Senior Software Engineer', 'PaySecure Technologies', '03/2019', 'Present'], ['Software Engineer', 'FinEdge Solutions', "Jul'15", 'Feb 2019']]);
+  assert.equal(p.currentDesignation, 'Senior Software Engineer'); assert.deepEqual(p.previousDesignations, ['Software Engineer']);
+  assert.ok(p.experience[0].summary.includes('payment microservices') && !p.experience[0].summary.includes('FinEdge'), 'header lines of the next job are not part of the previous job');
+  for (const s of ['java', 'python', 'spring boot', 'django', 'postgresql', 'mongodb', 'aws', 'docker', 'kubernetes', 'kafka']) assert.ok(p.allSkills.includes(s), s);
+  assert.equal(p.totalExperienceYears, 8); // stated in the summary
+  assert.equal(p.education[0].year, '2015'); assert.match(p.education[0].degree, /Bachelor of Engineering/); assert.deepEqual(p.certifications, ['AWS Certified Developer', 'Oracle Certified Java Programmer']);
+});
+test('current role is the one ending last even when listed oldest first; semicolon and bullet skill lists', () => {
+  const p = parseLocal(LAYOUTS.oldestFirst, new Date('2024-06-01'));
+  assert.equal(p.currentDesignation, 'Marketing Manager'); assert.deepEqual(p.previousDesignations, ['Digital Marketing Executive']);
+  assert.ok(['seo', 'google analytics', 'content marketing', 'email marketing'].every(s => p.allSkills.includes(s))); assert.equal(p.location, 'Hyderabad');
+});
+test('labelled name and location, "to" date ranges, a CV title line is not the name', () => {
+  const p = parseLocal(LAYOUTS.labels, new Date('2024-06-01'));
+  assert.equal(p.name, 'Vikram Singh'); assert.equal(p.location, 'Chennai'); assert.equal(p.experience[0].title, 'Accounts Executive'); assert.equal(p.experience[0].company, 'Sunrise Traders');
+  assert.equal(p.totalExperienceYears, 5); assert.ok(p.allSkills.includes('tally erp') && p.allSkills.includes('gst') && p.allSkills.includes('tds'));
+});

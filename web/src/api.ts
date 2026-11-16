@@ -16,7 +16,8 @@ import * as store from './store.ts';
 export type { Job, LogEntry, Prefs, Profile, Status };
 export { STATUSES };
 export interface Run { adapter: string; name: string; status: string; reason: string; found: number; checked_at: string; cached?: boolean; added?: number; duplicate?: number }
-export interface State { slot: store.Slot; slots: store.Slot[]; profile: Profile | null; prefs: Prefs | null; jobs: Job[]; runs: Run[]; logs: LogEntry[]; lastSearch: string; queries: string[] }
+export interface PortalResult { portal: string; name: string; found: number; added: number; duplicate: number; blocked?: string; error?: string }
+export interface State { resumeText: string; slot: store.Slot; slots: store.Slot[]; profile: Profile | null; prefs: Prefs | null; jobs: Job[]; runs: Run[]; logs: LogEntry[]; lastSearch: string; queries: string[] }
 export const SOURCES = [careerPages, ...apiSources];
 export { PORTALS };
 
@@ -53,6 +54,17 @@ async function rescore() {
   await store.set('jobs', out);
 }
 
+let reqSeq = 0;
+/** Ask the browser extension (through its bridge on this page) and wait for the reply with the same id. */
+function extRequest<T>(type: string, payload: object, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = ++reqSeq;
+    const timer = setTimeout(() => { removeEventListener('message', on); reject(new Error('The extension did not answer.')); }, timeoutMs);
+    const on = (e: MessageEvent) => { if (e.source !== window || e.data?.type !== 'jobagent-reply' || e.data.id !== id) return; clearTimeout(timer); removeEventListener('message', on); resolve(e.data as T); };
+    addEventListener('message', on); postMessage({ type, id, ...payload }, location.origin);
+  });
+}
+
 const pool = async <T,>(items: T[], n: number, f: (x: T) => Promise<void>) => { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await f(items[i++]); })); };
 
 export const api = {
@@ -70,9 +82,9 @@ export const api = {
   },
 
   state: async (): Promise<State> => {
-    const [slots, profile, prefs, jobs, runs, logs, lastSearch] = await Promise.all([store.slots(), readProfile(), readPrefs(), readJobs(), store.get<Run[]>('runs'), store.get<LogEntry[]>('logs'), store.get<string>('lastSearch')]);
+    const [slots, profile, prefs, jobs, runs, logs, lastSearch, resumeText] = await Promise.all([store.slots(), readProfile(), readPrefs(), readJobs(), store.get<Run[]>('runs'), store.get<LogEntry[]>('logs'), store.get<string>('lastSearch'), store.get<string>('resumeText')]);
     const slot = slots.find(s => s.id === store.slotId()) ?? slots[0];
-    return { slot, slots, profile: profile ?? null, prefs: prefs ?? null, jobs: (jobs ?? []).sort((a, b) => b.score - a.score || b.firstSeen.localeCompare(a.firstSeen)), runs: runs ?? [], logs: logs ?? [], lastSearch: lastSearch ?? '',
+    return { resumeText: resumeText ?? '', slot, slots, profile: profile ?? null, prefs: prefs ?? null, jobs: (jobs ?? []).sort((a, b) => b.score - a.score || b.firstSeen.localeCompare(a.firstSeen)), runs: runs ?? [], logs: logs ?? [], lastSearch: lastSearch ?? '',
       queries: profile && prefs ? buildQueries(profile, prefs) : [] };
   },
 
@@ -89,7 +101,7 @@ export const api = {
     // A new resume means a new search: roles and locations come from THIS resume (other settings are kept), and jobs found for the
     // previous resume are dropped. Jobs you saved or moved past "New" are kept and rescored against the new profile.
     const previous = await readProfile();
-    await store.set('profile', profile);
+    await store.set('profile', profile); await store.set('resumeText', text.slice(0, 60000));
     await store.set('prefs', { ...DEFAULT_PREFS, ...old, roles: profile.targetRoles, locations: profile.location ? [profile.location] : [] } satisfies Prefs);
     const keep = (await readJobs()).filter(j => j.saved || j.status !== 'new');
     await Promise.all([store.set('jobs', keep), store.set('runs', []), store.set('cache', {}), store.set('lastSearch', '')]);
@@ -142,7 +154,7 @@ export const api = {
     const counts = ingest(raws, profile, prefs, jobs, r => sim?.get(r.url));
     if (sim) for (const j of jobs) if (sim.has(j.url) && j.semantic == null) j.semantic = sim.get(j.url);
     const perSource = results.map(r => ({ ...r }));
-    await Promise.all([store.set('jobs', jobs), store.set('runs', perSource), store.set('cache', cache), store.set('lastSearch', new Date().toISOString()),
+    await Promise.all([store.set('jobs', jobs), store.set('runs', [...((await store.get<Run[]>('runs')) ?? []).filter(r => !SOURCES.some(x => x.id === r.adapter)), ...perSource]), store.set('cache', cache), store.set('lastSearch', new Date().toISOString()),
       store.set('logs', [...logs, ...((await store.get<LogEntry[]>('logs')) ?? [])].slice(0, 300))]);
     return { results: perSource, added: counts.added, duplicate: counts.duplicate };
   },
@@ -163,6 +175,26 @@ export const api = {
     addEventListener('message', onMsg);
     postMessage({ type: 'jobagent-pull' }, location.origin);
   }),
+
+  /** Version string when the extension is installed and connected to this page, otherwise ''. */
+  extensionStatus: async () => { try { return (await extRequest<{ version: string }>('jobagent-ping', {}, 1200)).version; } catch { return ''; } },
+
+  /**
+   * Search one restricted portal through the extension, in the user's own browser: the extension opens the portal's search page
+   * (one page, because the user clicked), reads the listings, and the results are scored and shown here. A login or CAPTCHA stops it.
+   */
+  portalSearch: async (portalId: string): Promise<PortalResult> => {
+    const portal = PORTALS.find(p => p.id === portalId); if (!portal) throw new Error('Unknown portal');
+    const { profile, prefs } = await need();
+    const role = buildQueries(profile, prefs)[0] ?? prefs.roles[0];
+    if (!role) throw new Error('Add a target role first.');
+    const r = await extRequest<{ jobs?: RawJob[]; blocked?: string; error?: string }>('jobagent-search', { url: portal.searchUrl(role, prefs.locations[0] ?? '') }, 90000);
+    const raws = (r.jobs ?? []).map(j => ({ ...j, source: portalName(j.source), sourceKind: 'portal' as const, description: j.description ?? '' }));
+    const jobs = await jobsOf(); const counts = ingest(raws, profile, prefs, jobs); await store.set('jobs', jobs);
+    const run: Run = { adapter: portal.id, name: portal.name, status: r.blocked ? 'blocked' : r.error ? 'error' : 'ok', reason: r.blocked ?? r.error ?? `Read ${raws.length} listings through your browser.`, found: raws.length, checked_at: new Date().toISOString(), added: counts.added, duplicate: counts.duplicate };
+    await store.set('runs', [...((await store.get<Run[]>('runs')) ?? []).filter(x => x.adapter !== portal.id), run]);
+    return { portal: portal.id, name: portal.name, found: raws.length, added: counts.added, duplicate: counts.duplicate, blocked: r.blocked, error: r.error };
+  },
 
   updateJob: async (id: string, patch: Partial<Pick<Job, 'status' | 'saved' | 'notes'>>) => {
     const jobs = await jobsOf();

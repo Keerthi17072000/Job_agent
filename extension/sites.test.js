@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
-const { extract, diagnose } = require('./sites.js');
+const { extract, diagnose, blocked } = require('./sites.js');
 
 const run = (url, html) => { const d = new JSDOM(html, { url }); return { doc: d.window.document, loc: d.window.location }; };
 
@@ -31,4 +31,10 @@ test('unsupported host and empty page capture nothing; diagnose reports structur
   const b = run('https://www.naukri.com/x', `<div class="srp-jobtuple-wrapper"><a class="title" href="/job-listings-a-1">Secret Title</a></div>`);
   const d = diagnose(b.doc, b.loc);
   assert.match(d, /selector cards: 1/); assert.match(d, /\[12c\]/); assert.ok(!d.includes('Secret Title'));
+});
+
+test('blocked(): login walls and verification pages are recognised so the extension stops instead of continuing', () => {
+  const a = run('https://www.linkedin.com/authwall?trk=x', '<p>Join now</p>'); assert.match(blocked(a.doc, a.loc), /login or verification/);
+  const b = run('https://www.naukri.com/react-jobs', '<h1>Please verify you are human to continue</h1>'); assert.match(blocked(b.doc, b.loc), /login or verification/);
+  const c = run('https://www.naukri.com/react-jobs', '<p>No jobs matched your search.</p>'); assert.equal(blocked(c.doc, c.loc), '');
 });

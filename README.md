@@ -9,7 +9,7 @@ Free: no server, no account, no API key needed. Your resume and jobs are stored 
 2. **Review your profile** (Profile page): fix name, designation, experience, skills, target roles, locations and work modes, then confirm. Every match is recalculated from this profile.
 3. **Search** (Overview): queries are generated from your roles and skills, and sent to every source at once. The Sources page shows each source's real status and an activity log. Results are cached for 6 hours; "Fresh search" refetches.
 4. **Review matches**: score 0-100 with reasons, matched and missing skills, filters, sorting, details page, original application link, save, and application tracking with notes.
-5. **Restricted portals** (Naukri, LinkedIn, Indeed, Glassdoor, Foundit, Hirist, iimjobs, Shine, Wellfound, Instahyre, Cutshort) forbid automated reading, so the app never opens them. Use the Chrome extension: open a portal search from the Sources page in your own tab, click **Send to Job Agent**, come back and the listings import. Install it once from the Sources page (or load `extension/` unpacked).
+5. **Naukri, LinkedIn, Indeed, Glassdoor, Foundit, Hirist, iimjobs, Shine, Wellfound, Instahyre, Cutshort** have no public API and forbid automated reading, so the website itself never touches them. Install the Chrome extension once (Sources page). Then click **Search** next to a portal (or **Search portals** on the Overview page): the extension opens that portal's search page **in your own browser and login**, reads the listings, closes the tab, and the jobs appear in this app, scored and ranked, with the original link. One page per click. If a portal shows a login or verification page its tab is brought to the front: finish it yourself and search again; nothing tries to get past it.
 
 ## Sources
 | Source | Status |
@@ -17,7 +17,7 @@ Free: no server, no account, no API key needed. Your resume and jobs are stored 
 | Greenhouse, Lever, Ashby, SmartRecruiters boards | Verified live from a browser (Greenhouse, Lever, Ashby, SmartRecruiters). Add boards as `ats:token` lines in Settings. |
 | Remotive, Jobicy, Arbeitnow, RemoteOK | Verified live from a browser. Mostly remote or international roles. |
 | Adzuna (India) | Needs your own free key. From its documentation only, unverified. |
-| Naukri, LinkedIn, Indeed, Glassdoor, Foundit, Hirist, iimjobs, Shine, Wellfound, Instahyre, Cutshort | Manual via the extension. Selectors and search links unverified until you try them. |
+| Naukri, LinkedIn, Indeed, Glassdoor, Foundit, Hirist, iimjobs, Shine, Wellfound, Instahyre, Cutshort | Through the extension in your own browser. The flow is tested end to end against fixture pages; each portal's real page markup and search link is unverified until you try it (use Diagnose). |
 | Workday, The Muse | Not supported (no stable public API / blocks browser requests). |
 
 ## Optional AI
@@ -29,7 +29,7 @@ npm install
 npm test            # unit tests (engine + extension extractors)
 npm run typecheck
 npm run build
-npm run e2e         # Playwright end-to-end on the built site (npx playwright install chromium first)
+npm run e2e         # Playwright end-to-end on the built site, including the extension (npx playwright install chromium first)
 npm run dev         # http://localhost:5173
 ```
 No environment variables: keys are entered in the UI. CI (`.github/workflows/ci.yml`) runs all of the above; pushes to `main` deploy to Pages.

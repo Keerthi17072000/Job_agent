@@ -10,7 +10,7 @@ function Tile({ label, value, tone }: { label: string; value: number; tone?: str
 }
 
 export default function Overview() {
-  const { st, scan, runScan, cancelScan, busy, savePrefs } = useApp();
+  const { st, scan, runScan, cancelScan, busy, savePrefs, ext, portalSearchAll, portalBusy } = useApp();
   const [role, setRole] = useState(''), [loc, setLoc] = useState(''), [mode, setMode] = useState('');
   if (!st) return null;
   if (!st.profile || !st.prefs) return <div className="view mx-auto max-w-2xl space-y-6 py-10 text-center">
@@ -43,8 +43,10 @@ export default function Overview() {
           <Select className="w-40" aria-label="Work mode" value={mode} onChange={e => setMode(e.target.value)}><option value="">Any mode</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="office">Office</option></Select>
           <Button type="submit" disabled={busy || !prefs.roles.length && !role.trim()}>{scan.running ? <><span className="spinner" />Searching {scan.done}/{scan.total}</> : 'Search'}</Button>
           {scan.running && <Button type="button" variant="outline" onClick={cancelScan}>Cancel</Button>}
+          <Button type="button" variant="outline" disabled={busy || !ext || !prefs.roles.length} title={ext ? 'Searches Naukri, LinkedIn and the other portals in your own browser, one page each' : 'Install the browser extension to search Naukri and LinkedIn from here'} onClick={portalSearchAll}>{portalBusy ? <><span className="spinner" />Portals…</> : 'Search portals'}</Button>
         </form>
         <div className="flex flex-wrap items-center gap-1.5 text-xs"><span className="font-semibold text-mute">Searching for:</span>{st.queries.map(q => <Badge key={q} tone="lime">{q}</Badge>)}{!st.queries.length && <span className="text-warn">Add a target role (Profile) to search.</span>}</div>
+        {!ext && <p className="text-xs text-mute">Naukri, LinkedIn and other portals appear here once the <a href="#/sources" className="font-semibold text-brand-ink hover:underline">browser extension</a> is installed.</p>}
       </Card>
 
       <section className="space-y-3"><div className="flex items-center justify-between"><h2 className="text-lg font-extrabold">Recommended</h2><a href="#/jobs" className="text-sm font-semibold text-brand-ink hover:underline">View all</a></div>

@@ -94,7 +94,14 @@
       `link path shapes: ${paths.join(' ')}`, `first card: ${first ? sketch(first).slice(0, 4000) : 'none found'}`].join('\n');
   }
 
-  const api = { extract, diagnose, siteFor, SITES };
+  /** Why a page that yielded no jobs is not a results page (login wall, CAPTCHA, verification). Empty string when it is just empty. We never try to get past these. */
+  function blocked(doc, loc) {
+    if (/\/(login|signin|uas\/login|authwall|checkpoint|challenge|sorry)\b|captcha/i.test(loc.pathname + loc.search)) return 'The site asked for a login or verification.';
+    const t = (doc.body?.innerText || doc.body?.textContent || '').slice(0, 4000);
+    return /verify you are human|are you a robot|unusual traffic|access denied|captcha|security check|sign in to (view|see|continue)|join now to see|log in to continue/i.test(t) ? 'The site asked for a login or verification.' : '';
+  }
+
+  const api = { extract, diagnose, siteFor, blocked, SITES };
   globalThis.JobAgentSites = api;
   if (typeof module !== 'undefined') module.exports = api;
 })();

@@ -6,17 +6,19 @@ import { normalizeProfile } from './profile.ts';
 import type { Experience, Profile } from './types.ts';
 
 const SECTIONS: Record<string, RegExp> = {
-  summary: /^(professional\s+|career\s+)?(summary|profile|objective|about(\s+me)?)$/i,
-  skills: /^((technical|key|core|professional|it)\s+)?(skills?|competenc(y|ies)|expertise|tools?(\s*(&|and)\s*technologies)?|technologies|skills?\s*(&|and)\s*(tools|technologies|abilities))$/i,
-  experience: /^((work|professional|employment|relevant|industry)\s+)?(experience|history)$|^career\s+history$/i,
-  projects: /^((academic|key|personal|selected|notable)\s+)?projects?$/i,
-  education: /^(education(al)?(\s+(background|qualifications?))?|academic(s|\s+qualifications?|\s+background)?|qualifications?)$/i,
-  certifications: /^(certifications?|licen[sc]es?|courses|training|achievements?)(\s*(&|and)\s*\w+)?$/i,
+  summary: /^((professional|career|executive)\s+)?(summary|profile|objective|about(\s+me)?|overview)$|^summary\s+of\s+(qualifications|experience)$/i,
+  skills: /^((technical|key|core|professional|it|functional|relevant)\s+)?(skills?|competenc(y|ies)|expertise|tools?(\s*(&|and)\s*technologies)?|technologies|tech\s*stack|skills?\s*(&|and)\s*(tools|technologies|abilities|expertise))$|^areas\s+of\s+expertise$|^skills?\s+summary$/i,
+  experience: /^((work|professional|employment|relevant|industry|career)\s+)?(experience|history|background)$|^(work|employment)\s+experience$|^experience\s+summary$|^internships?$/i,
+  projects: /^((academic|key|personal|selected|notable|major)\s+)?projects?$/i,
+  education: /^(education(al)?(\s+(background|qualifications?|details))?|academic(s|\s+qualifications?|\s+background|\s+details)?|qualifications?)$/i,
+  certifications: /^(certifications?|licen[sc]es?|courses|training|achievements?|awards?)(\s*(&|and)\s*\w+)?$/i,
 };
 const MONTHS = 'jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec';
 const MON = new RegExp(`^(${MONTHS})`, 'i');
-const DATE = `(?:(?:${MONTHS})[a-z]*\\.?\\s*,?\\s*)?(?:19|20)\\d\\d`;
-const RANGE = new RegExp(`(${DATE})\\s*(?:-|–|—|to)\\s*(present|current|now|till date|ongoing|${DATE})`, 'i');
+// "Jan 2019", "January, 2019", "Jan'19", "05/2019", "2019"
+const DATE = `(?:(?:${MONTHS})[a-z]*\\.?\\s*,?\\s*(?:(?:19|20)\\d\\d|['’]\\d\\d)|(?:0?[1-9]|1[0-2])[/.](?:19|20)\\d\\d|(?:19|20)\\d\\d)`;
+const END = `present|current|now|till\\s*date|to\\s*date|ongoing|${DATE}`;
+const RANGE = new RegExp(`(${DATE})\\s*(?:-|–|—|to|till|until)\\s*(${END})`, 'i');
 const EDU_CI = /bachelor|master|diploma|ph\.?d|high school|secondary|b\.?\s?tech|m\.?\s?tech|b\.?\s?sc|m\.?\s?sc|b\.?\s?com|m\.?\s?com|\bmca\b|\bbca\b|\bmba\b|\bbba\b|\bllb\b|\bmbbs\b|\bssc\b|\bhsc\b/i;
 const EDU_CS = /\b(B\.E|B\.A|M\.A|M\.S|B\.S|BE|BA|MA|MS|BS)\b/; // upper-case only: "be" and "ms office" are not degrees
 const EDU = { test: (l: string) => EDU_CI.test(l) || EDU_CS.test(l) };
@@ -26,16 +28,18 @@ const clean = (l: string) => l.replace(/^[\s•●▪■◦·*\-–—>]+/, '').
 const has = (text: string, term: string) => new RegExp(`(^|[^a-z0-9+#.])${term.replace(/[.+*?^${}()|[\]\\/]/g, '\\$&')}($|[^a-z0-9+#])`, 'i').test(text);
 
 function toMonths(d: string, now: Date, isEnd = false): number | null {
-  if (/present|current|now|till|ongoing/i.test(d)) return now.getFullYear() * 12 + now.getMonth();
-  const y = /(19|20)\d\d/.exec(d)?.[0]; if (!y) return null;
+  if (/present|current|now|till|to\s*date|ongoing/i.test(d)) return now.getFullYear() * 12 + now.getMonth();
+  const num = /(0?[1-9]|1[0-2])[/.]((?:19|20)\d\d)/.exec(d); if (num) return +num[2] * 12 + (+num[1] - 1);
+  const short = /['’](\d\d)/.exec(d), long = /(19|20)\d\d/.exec(d);
+  const y = short ? 2000 + +short[1] : long ? +long[0] : null; if (y == null) return null;
   const m = MON.exec(d.trim()); const mi = m ? MONTHS.split('|').indexOf(m[1].toLowerCase()) : isEnd ? 11 : 0; // a bare end year means the end of that year
-  return +y * 12 + Math.max(0, mi);
+  return y * 12 + Math.max(0, mi);
 }
 
 function splitSections(lines: string[]) {
   const out: Record<string, string[]> = {}; let cur = '';
   for (const raw of lines) {
-    const head = clean(raw).replace(/[:：]$/, '');
+    const head = clean(raw).replace(/\(.*?\)/g, '').replace(/[:：]\s*$/, '').trim();
     const name = head.length <= 40 && Object.keys(SECTIONS).find(k => SECTIONS[k].test(head));
     if (name) { cur = name; out[cur] ??= []; continue; }
     if (cur) out[cur].push(raw);
@@ -46,38 +50,42 @@ function splitSections(lines: string[]) {
 function parseSkillLines(lines: string[]): string[] {
   const out: string[] = [];
   for (const raw of lines) {
-    let l = clean(raw);
-    const m = /^([A-Za-z &/]{3,32}):\s*(.+)$/.exec(l); if (m) l = m[2]; // "Languages: A, B" keeps the list
-    for (const t of l.split(/[,;|•●▪·]|\s{2,}|\s\/\s/)) {
-      const s = t.replace(/\.$/, '').trim();
-      if (s.length >= 2 && s.length <= 40 && s.split(/\s+/).length <= 4 && !/^\d+$/.test(s)) out.push(s);
+    for (const seg of clean(raw).split(/[|•●▪·;]|\s{3,}/)) {
+      const m = /^([A-Za-z &/+]{3,32}):\s*(.+)$/.exec(seg.trim()); // "Languages: A, B" keeps the list
+      for (const t of (m ? m[2] : seg).split(/,|\s\/\s/)) {
+        const s = t.replace(/\.$/, '').trim();
+        if (s.length >= 2 && s.length <= 40 && s.split(/\s+/).length <= 4 && !/^\d+$/.test(s) && !/^(and|etc|more)$/i.test(s)) out.push(s);
+      }
     }
   }
   return out;
 }
 
-const splitTitleCompany = (rest: string, prev: string) => {
-  const parts = rest.split(/\s+[|–—@]\s+|\s+-\s+|,\s+|\s+at\s+/).map(clean).filter(Boolean);
-  const title = parts.find(p => TITLE_WORDS.test(p));
-  const company = parts.find(p => p !== title) ?? (prev && !TITLE_WORDS.test(prev) ? prev : '');
-  return { title: title ?? (prev && TITLE_WORDS.test(prev) ? prev : parts[0] ?? ''), company: company ?? '' };
-};
+const LOCATION = new RegExp(`\\b(${CITIES.join('|')}|india|usa|uk|remote|maharashtra|karnataka|tamil nadu|telangana|kerala|delhi)\\b`, 'i');
+const PARTS = /\s+[|–—@]\s+|\s+-\s+|,\s+|\s+at\s+|\s*\|\s*/;
+const isBullet = (raw: string) => /^\s*[•●▪■◦·*\-–—>]/.test(raw);
 
-function parseExperience(lines: string[], now: Date): Experience[] {
-  const out: Experience[] = []; let prev = '';
-  for (const raw of lines) {
-    const l = clean(raw); if (!l) continue;
-    const r = RANGE.exec(l);
-    if (r) {
-      const rest = clean(l.replace(RANGE, '').replace(/[()|,–—-]+\s*$/, '').replace(/^[()|,–—-]+\s*/, ''));
-      const { title, company } = splitTitleCompany(rest, prev);
-      out.push({ company, title, start: r[1], end: r[2], summary: '' });
-    } else if (out.length && out[out.length - 1].summary.length < 400 && !(TITLE_WORDS.test(l) && l.length < 60 && !/[.]$/.test(l) && !out.at(-1)!.title)) {
-      out[out.length - 1].summary += (out[out.length - 1].summary ? ' ' : '') + l;
-    }
-    prev = l;
-  }
-  return out;
+/**
+ * Employment history. Handles "Title, Company  Jan 2019 - Present" on one line and the stacked layout
+ * (company line, title line, then a dates line). Header lines above a dates line belong to that entry, not the previous one.
+ */
+function parseExperience(lines: string[]): Experience[] {
+  const L = lines.map(raw => ({ raw, l: clean(raw) })).filter(x => x.l);
+  const dateAt = L.map((x, i) => (RANGE.test(x.l) ? i : -1)).filter(i => i >= 0);
+  const headers = dateAt.map((i, n) => { // nearest non-bullet short lines above the dates line, after the previous entry's dates line
+    const floor = n ? dateAt[n - 1] : -1, above: { l: string; at: number }[] = [];
+    for (let j = i - 1; j > floor && above.length < 2; j--) { if (isBullet(L[j].raw) || L[j].l.length > 80 || RANGE.test(L[j].l)) break; above.unshift({ l: L[j].l, at: j }); }
+    return above;
+  });
+  return dateAt.map((i, n) => {
+    const r = RANGE.exec(L[i].l)!;
+    const rest = clean(L[i].l.replace(RANGE, '').replace(/[()|,–—-]+\s*$/, '').replace(/^[()|,–—-]+\s*/, ''));
+    const cands = [...rest.split(PARTS), ...headers[n].flatMap(h => h.l.split(PARTS))].map(clean).filter(Boolean);
+    const title = cands.find(c => TITLE_WORDS.test(c) && c.length < 70) ?? '';
+    const company = cands.find(c => c !== title && !LOCATION.test(c) && !/^\d/.test(c) && c.length < 70) ?? '';
+    const end = n + 1 < dateAt.length ? (headers[n + 1][0]?.at ?? dateAt[n + 1]) : L.length;
+    return { company, title, start: r[1], end: r[2], summary: L.slice(i + 1, end).map(x => x.l).join(' ').slice(0, 600) };
+  });
 }
 
 function spanYears(entries: Experience[], now: Date): number {
@@ -99,7 +107,9 @@ export function parseLocal(text: string, now = new Date()): Profile {
 
   const email = /[\w.+-]+@[\w-]+(\.[\w-]+)+/.exec(text)?.[0] ?? '';
   const phone = /(\+?\d[\d\s().-]{8,15}\d)/.exec(head)?.[1]?.trim() ?? '';
-  const name = lines.slice(0, 5).map(clean).find(l => /^[A-Za-z][A-Za-z.'-]+(\s+[A-Za-z.'-]+){1,3}$/.test(l) && !TITLE_WORDS.test(l) && !Object.values(SECTIONS).some(re => re.test(l))) ?? '';
+  const labelled = /(?:^|\n)\s*name\s*[:\-]\s*([A-Za-z][A-Za-z.' -]{2,40})/i.exec(head)?.[1]?.trim();
+  const properName = (l: string) => /^[A-Za-z][A-Za-z.'-]+(\s+[A-Za-z.'-]+){1,3}$/.test(l) && !TITLE_WORDS.test(l) && !/curriculum|vitae|resume|^cv$|biodata|contact|profile/i.test(l) && !Object.values(SECTIONS).some(re => re.test(l));
+  const name = labelled ?? lines.slice(0, 6).map(clean).find(properName) ?? '';
 
   // skills: the Skills section as written, plus recognised terms anywhere in the resume
   const listed = parseSkillLines(sec.skills ?? []);
@@ -121,12 +131,14 @@ export function parseLocal(text: string, now = new Date()): Profile {
 
   // experience
   const expLines = sec.experience ?? [];
-  let experience = parseExperience(expLines, now);
-  let titles = experience.map(e => e.title).filter(Boolean);
+  let experience = parseExperience(expLines);
+  let titles: string[] = [];
   if (!experience.length) { // no Experience heading: look for "<title>, <company> <date range>" lines anywhere
-    experience = parseExperience(lines.filter(l => RANGE.test(l) && !EDU.test(l)), now);
-    titles = experience.map(e => e.title).filter(Boolean);
+    experience = parseExperience(lines.filter(l => RANGE.test(l) && !EDU.test(l)));
   }
+  // current role = the entry that ends last ("Present" is latest); the rest follow, newest first
+  experience = [...experience].sort((a, b) => (toMonths(b.end, now, true) ?? 0) - (toMonths(a.end, now, true) ?? 0));
+  titles = experience.map(e => e.title).filter(Boolean);
   const stated = /(\d+(?:\.\d+)?)\+?\s*(?:years?|yrs?)\b/i.exec([...(sec.summary ?? []), ...lines.slice(0, 15)].join(' '));
   const years = stated ? +stated[1] : spanYears(experience, now);
   const distinct = [...new Map(titles.map(t => [t.toLowerCase(), t])).values()];
@@ -151,7 +163,9 @@ export function parseLocal(text: string, now = new Date()): Profile {
 
   const lower = head.toLowerCase();
   const city = CITIES.find(c => new RegExp(`\\b${c}\\b`).test(lower)) ?? CITIES.find(c => new RegExp(`\\b${c}\\b`).test(text.toLowerCase()));
-  const cityCase = city ? city.replace(/\b\w/g, m => m.toUpperCase()) : '';
+  const labelledLoc = /(?:location|address|city|current location)\s*[:\-]\s*([A-Za-z][A-Za-z .]{2,30})/i.exec(head)?.[1]?.split(/[,|]/)[0]?.trim();
+  const headerLoc = lines.slice(0, 8).map(l => /^(?:.*[|•]\s*)?([A-Z][a-z]+(?: [A-Z][a-z]+)?),\s*(?:[A-Z][a-z]+(?: [A-Z][a-z]+)?|[A-Z]{2})(?:,\s*[A-Za-z ]+)?\s*(?:[|•].*)?$/.exec(clean(l))?.[1]).find(c => c && !TITLE_WORDS.test(c) && !/@/.test(c));
+  const cityCase = city ? city.replace(/\b\w/g, m => m.toUpperCase()) : labelledLoc ?? headerLoc ?? '';
 
   return normalizeProfile({
     name, email, phone, totalExperienceYears: years, seniority: seniority(years, titles[0] ?? ''),

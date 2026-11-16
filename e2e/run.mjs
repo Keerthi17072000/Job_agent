@@ -127,6 +127,13 @@ await test('data saved by an older version of the app loads without errors and i
   await page.locator('a.font-extrabold', { hasText: 'Frontend Developer' }).first().click(); await page.waitForSelector('text=Resume suitability');
 });
 
+await test('without the extension, portals say so and their search buttons are disabled', async page => {
+  await home(page); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
+  await page.goto(BASE + '#/sources'); await page.getByText('Extension not detected').waitFor({ timeout: 8000 });
+  assert.ok(await page.locator('li', { hasText: 'Naukri' }).locator('button:has-text("Search")').isDisabled());
+  await page.goto(BASE + '#/profile'); await page.locator('summary', { hasText: 'Text read from your resume' }).click(); await page.waitForSelector('pre:has-text("Frontend developer")');
+});
+
 await test('phone layout has no horizontal overflow; theme toggle works', async page => {
   await page.setViewportSize({ width: 400, height: 800 }); await home(page); await upload(page, file('asha.txt', RESUME_DEV)); await page.waitForSelector('text=Hello, Asha');
   for (const r of ['overview', 'jobs', 'profile', 'sources', 'settings', 'applications']) { await page.goto(BASE + '#/' + r); await page.waitForTimeout(300); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow on ${r}`); }

@@ -41,6 +41,9 @@ export default function ProfileView() {
         <Label>Work modes<div className="flex gap-4 py-1 text-sm font-medium text-ink">{(['remote', 'hybrid', 'office'] as const).map(m => <label key={m} className="flex items-center gap-1.5 capitalize"><input type="checkbox" checked={prefs.workModes.includes(m)} onChange={e => setPrefs({ ...prefs, workModes: e.target.checked ? [...prefs.workModes, m] : prefs.workModes.filter(x => x !== m) })} />{m}</label>)}</div></Label>
         <Label>Blocklist (company or title words)<Input value={prefs.blocklist.join(', ')} onChange={e => setPrefs({ ...prefs, blocklist: lines(e.target.value) })} /></Label>
         <p className="text-xs text-mute">Location and work mode filter jobs; they do not change how well your resume fits a job.</p></Card></div>
+    <Card className="space-y-2"><details><summary className="cursor-pointer font-extrabold">Text read from your resume</summary>
+      <p className="my-2 text-xs text-mute">This is exactly what the parser saw. If something is missing here (for example a two-column PDF that was read out of order), add it above yourself or upload the resume as DOCX or TXT.</p>
+      <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-2xl bg-sunk p-3 text-xs">{st.resumeText || 'Not available for resumes uploaded before this feature. Upload the resume again.'}</pre></details></Card>
     <Card className="space-y-4"><h3 className="font-extrabold">Skills</h3><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{CATS.map(([k, label]) => <Label key={k}>{label}<Chips items={p.skills[k]} onChange={v => upSkills(k, v)} /></Label>)}</div>
       <p className="text-xs text-mute">Only skills that appear here are ever treated as yours. Add any the parser missed.</p></Card>
     <div className="grid gap-5 xl:grid-cols-2">

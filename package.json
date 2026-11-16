@@ -7,7 +7,7 @@
     "build": "vite build web",
     "test": "node --test engine/engine.test.ts extension/sites.test.js",
     "typecheck": "tsc -p web --noEmit && tsc -p engine --noEmit",
-    "e2e": "node e2e/run.mjs"
+    "e2e": "node e2e/run.mjs && node e2e/extension.mjs"
   },
   "dependencies": {
     "mammoth": "^1.8.0",

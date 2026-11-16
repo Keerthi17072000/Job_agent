@@ -1,6 +1,13 @@
 // Adds a small panel on supported portals. Nothing is read until you click Send; nothing loads pages for you.
 const S = globalThis.JobAgentSites;
 if (S.siteFor(location.hostname)) {
+  // The Job Agent app can ask this page for its listings (it opened the tab because YOU clicked Search there).
+  chrome.runtime.onMessage.addListener((m, _s, reply) => {
+    if (m?.type !== 'extract') return;
+    const { jobs } = S.extract(document, location);
+    reply(jobs.length ? { jobs } : { jobs: [], blocked: S.blocked(document, location) });
+  });
+
   const panel = document.createElement('div');
   panel.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;display:flex;gap:6px;align-items:center;font:600 13px system-ui';
   const mk = (label, bg, fg) => Object.assign(document.createElement('button'), { textContent: label, style: `padding:9px 13px;border:0;border-radius:8px;cursor:pointer;font:inherit;background:${bg};color:${fg};box-shadow:0 4px 14px rgba(0,0,0,.25)` });
