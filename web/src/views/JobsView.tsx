@@ -17,7 +17,7 @@ export default function JobsView({ savedOnly }: { savedOnly?: boolean }) {
   const [f, setF] = useState({ min: -1, role: '', company: '', location: '', exp: '', salary: false, mode: '', portal: '', posted: '', status: '', skills: '', fit: false, sort: 'match' });
   const set = (k: keyof typeof f, v: string | number | boolean) => setF(x => ({ ...x, [k]: v }));
   const jobs = st?.jobs ?? [];
-  const min = f.min >= 0 ? f.min : st?.prefs?.minScore ?? 60;
+  const min = f.min >= 0 ? f.min : savedOnly ? 0 : st?.prefs?.minScore ?? 60; // saved jobs are shown whatever their score
   const skills = lines(f.skills.toLowerCase());
   const shown = useMemo(() => jobs.filter(j => {
     const age = j.postedAt ? (Date.now() - +new Date(j.postedAt)) / 864e5 : 0;

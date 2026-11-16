@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Avatar, Badge, Button, Card, Input, LinkButton, Select, useCountUp, cn } from '../ui.tsx';
 import { useApp } from '../state.tsx';
-import { Icon, ICONS, STATUS_LABEL, UploadCard, day } from './common.tsx';
+import { Icon, ICONS, ReplaceResume, STATUS_LABEL, UploadCard, day } from './common.tsx';
 import type { Job } from '../api.ts';
 
 function Tile({ label, value, tone }: { label: string; value: number; tone?: string }) {
@@ -73,6 +73,7 @@ export default function Overview() {
       <Card className="space-y-4 text-center"><span className="mx-auto grid size-16 place-items-center rounded-full bg-brand-soft text-2xl font-extrabold text-brand-ink">{(st.profile.name || 'Y')[0].toUpperCase()}</span>
         <div><p className="text-lg font-extrabold">Hello, {st.profile.name.split(' ')[0] || 'there'}</p><p className="text-sm text-mute">{st.profile.currentDesignation || 'Add your role'} · {st.profile.totalExperienceYears} yrs</p></div>
         <div className="grid grid-cols-3 gap-2 text-center">{[['Jobs', jobs.length], ['Saved', jobs.filter(j => j.saved).length], ['Applied', count('applied') + count('interview')]].map(([k, v]) => <div key={k as string} className="rounded-2xl bg-sunk py-2"><div className="font-extrabold tabular-nums">{v}</div><div className="text-[11px] text-mute">{k}</div></div>)}</div>
+        <ReplaceResume className="w-full justify-center" /><p className="text-xs text-mute">A new resume replaces your roles and results, keeps jobs you saved or tracked, and searches again.</p>
         <div className="flex justify-center gap-2"><a href="#/profile" className="text-sm font-semibold text-brand-ink hover:underline">Edit profile</a>·<a href="#/sources" className="text-sm font-semibold text-brand-ink hover:underline">Sources</a></div></Card>
       <div className="grid grid-cols-2 gap-3"><Tile label="Excellent" value={jobs.filter(j => j.score >= 90).length} tone="bg-lime text-lime-ink" /><Tile label="Strong" value={jobs.filter(j => j.score >= 75 && j.score < 90).length} />
         <Tile label="New today" value={jobs.filter(j => day(j.firstSeen) === today).length} /><Tile label="Discovered" value={jobs.length} /></div>

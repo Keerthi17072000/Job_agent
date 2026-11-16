@@ -57,14 +57,16 @@ const pool = async <T,>(items: T[], n: number, f: (x: T) => Promise<void>) => { 
 
 export const api = {
   init: async () => {
-    const slots = await store.initSlots();
+    let slots = await store.initSlots();
     // one-time upgrade of data saved by an older version: store the complete shapes and recompute scores with the current rules
+    const prof = await readProfile(), slot = slots.find(x => x.id === store.slotId());
+    if (slot && prof?.name && slot.name === 'My profile') await store.saveSlots(slots.map(x => x.id === slot.id ? { ...x, name: prof.name } : x));
     const raw = (await store.get<Job[]>('jobs')) ?? [];
     if (raw.some(j => !Array.isArray(j.sources) || !j.breakdown || j.breakdown.education === undefined)) {
       try { const { profile, prefs } = await need(); await store.set('profile', profile); await store.set('prefs', prefs); await rescore(); }
       catch { await store.set('jobs', await readJobs()); } // no profile to score with: keep the jobs, filled in
     }
-    return slots;
+    return store.slots();
   },
 
   state: async (): Promise<State> => {
@@ -84,12 +86,16 @@ export const api = {
       try { profile = await makeAi(old.aiProvider, old.aiKey).extractProfile(text); }
       catch (e) { profile = parseLocal(text); note = `AI extraction failed (${(e as Error).message}); used the on-device parser.`; }
     } else profile = parseLocal(text);
+    // A new resume means a new search: roles and locations come from THIS resume (other settings are kept), and jobs found for the
+    // previous resume are dropped. Jobs you saved or moved past "New" are kept and rescored against the new profile.
+    const previous = await readProfile();
     await store.set('profile', profile);
-    await store.set('prefs', {
-      ...DEFAULT_PREFS, ...old,
-      roles: old?.roles.length ? old.roles : profile.targetRoles,
-      locations: old?.locations.length ? old.locations : profile.location ? [profile.location] : [],
-    } satisfies Prefs);
+    await store.set('prefs', { ...DEFAULT_PREFS, ...old, roles: profile.targetRoles, locations: profile.location ? [profile.location] : [] } satisfies Prefs);
+    const keep = (await readJobs()).filter(j => j.saved || j.status !== 'new');
+    await Promise.all([store.set('jobs', keep), store.set('runs', []), store.set('cache', {}), store.set('lastSearch', '')]);
+    await rescore();
+    const slot = (await store.slots()).find(x => x.id === store.slotId());
+    if (slot && profile.name && (/^(My profile|New profile)$/.test(slot.name) || slot.name === previous?.name)) await api.renameSlot(slot.id, profile.name); // name the profile after its owner
     return note;
   },
 

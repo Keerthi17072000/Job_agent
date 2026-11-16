@@ -51,7 +51,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const ctx: Ctx = {
     st, busy, msg, setMsg, scan, load, runScan, cancelScan: () => abort.current?.abort(),
-    upload: async f => { if (f) await guard('Reading your resume…', async () => (await api.resume(f)) || 'Resume read. Check your profile, then search.'); },
+    upload: async f => {
+      if (!f) return;
+      let note = '';
+      await guard('Reading your resume…', async () => { note = await api.resume(f); });
+      const s = await api.state();
+      if (!s.profile) return; // reading failed; guard already showed why
+      if (s.prefs?.roles.length) { setMsg(`${note ? note + ' ' : ''}Resume read. Searching for ${s.prefs.roles.slice(0, 2).join(', ')}…`); await runScan(true); }
+      else setMsg('Resume read, but no job title was found. Add a target role in Profile, then search.');
+    },
     importExt: () => guard('Importing…', async () => { const r = await api.importExtension(); return `Imported ${r.received}: ${r.added} added, ${r.duplicate} duplicates, ${r.received - r.added - r.duplicate} rejected (no verifiable https link).`; }),
     updateJob: async (id, patch) => { await api.updateJob(id, patch); await load(); },
     savePrefs: p => guard('Saving…', async () => { await api.savePrefs(p); return 'Preferences saved and matches updated.'; }),

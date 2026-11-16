@@ -18,11 +18,17 @@ export const ICONS = {
   moon: 'M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z', search: 'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3',
 };
 
+/** The one file input (rendered by the app shell). Every "upload" control is a label for it. */
+export function ResumeInput() {
+  const { upload, busy } = useApp();
+  return <input id="resume" type="file" accept=".pdf,.docx,.txt" disabled={busy} className="sr-only" aria-label="Resume file (PDF, DOCX or TXT)" onChange={e => { void upload(e.target.files?.[0]); e.target.value = ''; }} />;
+}
+export const ReplaceResume = ({ className }: { className?: string }) => <label htmlFor="resume" className={cn('inline-flex h-10 cursor-pointer items-center rounded-full border border-line bg-card px-5 text-sm font-semibold transition-colors hover:border-brand hover:bg-sunk focus-within:outline-2', className)}>Upload another resume</label>;
+
 export function UploadCard({ big }: { big?: boolean }) {
   const { upload, busy, msg } = useApp();
   const [drag, setDrag] = useState(false);
   return <>
-    <input id="resume" type="file" accept=".pdf,.docx,.txt" disabled={busy} className="sr-only" aria-label="Resume file (PDF, DOCX or TXT)" onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
     <label htmlFor="resume" onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={e => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files[0]); }}
       className={cn('block cursor-pointer rounded-3xl border-2 border-dashed border-brand/40 bg-card text-center transition-all hover:bg-brand-soft/50 focus-within:outline-2', big ? 'p-12' : 'p-6', drag && 'scale-[1.01] border-brand bg-brand-soft')}>
       {busy && msg.startsWith('Reading') ? <span className="inline-flex items-center gap-3 font-semibold"><span className="spinner text-brand" />Reading your resume…</span>

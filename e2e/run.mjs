@@ -36,11 +36,12 @@ const test = async (name, fn) => {
   const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 } }), page = await ctx.newPage(), errors = [];
   page.on('pageerror', e => errors.push(e.message)); page.on('console', m => m.type() === 'error' && !/Failed to load resource/.test(m.text()) && errors.push(m.text()));
   try { await mockSources(page); await fn(page, ctx); assert.deepEqual(errors, [], 'console errors'); console.log('ok  -', name); }
-  catch (e) { failed++; console.log('FAIL-', name, '\n    ', e.message.split('\n')[0]); await page.screenshot({ path: `e2e-fail-${failed}.png` }).catch(() => {}); }
+  catch (e) { failed++; console.log('FAIL-', name, '\n    ', e.message.split('\n').slice(0, 6).join(' | ')); await page.screenshot({ path: `e2e-fail-${failed}.png` }).catch(() => {}); }
   finally { await ctx.close(); }
 };
 const toast = page => page.locator('[role=status]');
 const upload = async (page, f) => page.setInputFiles('#resume', f);
+const uploadAndSearch = async (page, f, who) => { await upload(page, f); await page.waitForSelector(`text=Hello, ${who}`); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 }); }; // an upload searches by itself
 const home = async page => { await page.goto(BASE); await page.waitForSelector('h1'); };
 
 await test('invalid, empty and unsupported resumes are rejected with a clear message', async page => {
@@ -53,14 +54,14 @@ await test('invalid, empty and unsupported resumes are rejected with a clear mes
 });
 
 await test('upload, edit profile, search with a failing source, dedupe, save, track, persist', async page => {
-  await home(page); await upload(page, file('asha.txt', RESUME_DEV)); await page.waitForSelector('text=Hello, Asha');
+  await home(page); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
   await page.goto(BASE + '#/profile'); await page.waitForSelector('text=Review your profile');
-  assert.equal(await page.locator('input').nth(0).inputValue(), 'Asha Rao');
+  assert.equal(await page.locator('label', { hasText: /^Name/ }).locator('input').inputValue(), 'Asha Rao');
   await page.locator('[aria-label="Add item"]').last().fill('Figma'); await page.keyboard.press('Enter');
   await page.click('button:has-text("Confirm and update matches")'); await toast(page).filter({ hasText: 'Profile confirmed' }).waitFor();
   await page.goto(BASE + '#/settings'); await page.waitForSelector('text=Matching and search');
   await page.locator('textarea').first().fill('greenhouse:testco'); await page.click('button:has-text("Save settings")'); await toast(page).filter({ hasText: 'Preferences saved' }).waitFor();
-  await page.goto(BASE + '#/overview'); await page.click('button:has-text("Search")'); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+  await page.goto(BASE + '#/overview'); await page.click('button:has-text("Search")'); await toast(page).filter({ hasText: 'Searching all sources' }).waitFor(); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 }); // the first search's message must not satisfy this wait
   await page.goto(BASE + '#/sources'); await page.waitForSelector('text=Job sources');
   const card = n => page.locator('section[aria-label="Automatic sources"] > div').filter({ hasText: n });
   await card('Jobicy').locator('text=Error').waitFor(); assert.match(await card('Jobicy').innerText(), /HTTP 500/);   // failure reported, not hidden
@@ -83,21 +84,33 @@ await test('upload, edit profile, search with a failing source, dedupe, save, tr
 });
 
 await test('different profession: a nurse resume produces nurse queries, no developer terms', async page => {
-  await home(page); await upload(page, file('priya.txt', RESUME_NURSE)); await page.waitForSelector('text=Hello, Priya');
+  await home(page); await uploadAndSearch(page, file('priya.txt', RESUME_NURSE), 'Priya');
   const q = await page.locator('text=Searching for:').locator('..').innerText();
   assert.match(q, /Staff Nurse/); assert.doesNotMatch(q, /developer|react|engineer/i);
-  await page.click('button:has-text("Search")'); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
   await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0'); await page.waitForSelector('text=Staff Nurse Educator');
 });
 
+await test('uploading a different resume replaces roles and results, keeps tracked jobs, names the profile, and searches by itself', async page => {
+  await home(page); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
+  assert.match(await page.locator('header').innerText(), /Asha Rao/);                    // profile is named after the person, not "My profile"
+  await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0'); await page.waitForSelector('a:has-text("Frontend Developer")');
+  await page.locator('a.font-extrabold', { hasText: 'Frontend Developer' }).first().click(); await page.waitForSelector('text=Resume suitability');
+  await page.click('button:has-text("Save job")'); await page.waitForSelector('button:has-text("Saved")');           // tracked job must survive
+  await page.goto(BASE + '#/overview'); await uploadAndSearch(page, file('priya.txt', RESUME_NURSE), 'Priya');
+  assert.match(await page.locator('header').innerText(), /Priya Nair/);
+  const q = await page.locator('text=Searching for:').locator('..').innerText(); assert.match(q, /Staff Nurse/); assert.doesNotMatch(q, /Frontend|React/i);
+  await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0'); await page.waitForSelector('text=Staff Nurse Educator');
+  assert.equal(await page.locator('a.font-extrabold', { hasText: 'Frontend Engineer' }).count(), 0, 'untracked results of the old resume are gone');
+  await page.goto(BASE + '#/saved'); await page.waitForSelector('a.font-extrabold:has-text("Frontend Developer")');
+});
+
 await test('two profiles on one browser are isolated; switching restores each', async page => {
-  await home(page); await upload(page, file('asha.txt', RESUME_DEV)); await page.waitForSelector('text=Hello, Asha');
-  await page.click('button:has-text("Search")'); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+  await home(page); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
   await page.goto(BASE + '#/settings'); await page.waitForSelector('text=Profiles on this browser');
   await page.fill('input[aria-label="New profile name"]', 'Second person'); await page.click('button:has-text("Add")'); await page.waitForSelector('text=Second person');
   await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Upload your resume, get matched'); // fresh slot: no resume, no jobs
   await page.goto(BASE + '#/jobs'); await page.waitForSelector('text=Upload your resume first');
-  await page.goto(BASE + '#/settings'); await page.locator('li', { hasText: 'My profile' }).locator('button:has-text("Switch")').click();
+  await page.goto(BASE + '#/settings'); await page.locator('li', { hasText: 'Asha Rao' }).locator('button:has-text("Switch")').click();
   await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Hello, Asha');
 });
 
