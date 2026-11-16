@@ -53,7 +53,7 @@ a{color:var(--accent)}
 <main>
 <header>
   <h1>Job Agent Roadmap</h1>
-  <p class="lede">This page is the project roadmap. The app itself runs on your own computer (see the repository README) because it needs a Node server, so it cannot run on GitHub Pages. A local agent that reads your resume, searches Naukri, Hirist, iimjobs, LinkedIn and company career pages through a Playwright plugin, ranks jobs against your profile, and applies after you approve or automatically within limits you set.</p>
+  <p class="lede">This page is the project roadmap. The app itself is on the <a href="./">home page</a> and runs entirely in your browser. A local agent that reads your resume, searches Naukri, Hirist, iimjobs, LinkedIn and company career pages through a Playwright plugin, ranks jobs against your profile, and applies after you approve or automatically within limits you set.</p>
 </header>
 
 <section class="strip" aria-label="Status">
@@ -84,7 +84,7 @@ flowchart LR
   </pre>
   <p class="lede">Every portal gets one adapter with the same shape: how to read a listing and, in Phase 2, how to apply. Each portal runs in one of two modes, set by what its terms allow.</p>
   <div class="two" style="margin-top:16px">
-    <div class="box"><h3>Direct mode</h3><ul><li>For portals and career pages that allow automated reading</li><li>The agent fetches listings itself on a schedule</li></ul></div>
+    <div class="box"><h3>Direct mode</h3><ul><li>For career-page feeds that publish a public API (Greenhouse, Lever, Ashby, SmartRecruiters)</li><li>The app fetches listings from your browser when you click Search jobs</li></ul></div>
     <div class="box"><h3>Plugin mode</h3><ul><li>For portals that restrict scraping: Naukri and LinkedIn</li><li>A browser extension runs in your own logged-in tab</li><li>It reads only the page you have open, and only when you click Send to Job Agent</li><li>No background crawling, no automated page loads</li></ul></div>
   </div>
 </section>
@@ -129,7 +129,7 @@ flowchart LR
       <tr><td>Matcher and dedupe</td><td>Score and merge the same job across portals</td><td><span class="pill done">Built</span></td></tr>
       <tr><td>Approval queue and tracker</td><td>New, approved, applied, skipped</td><td><span class="pill done">Built</span></td></tr>
       <tr><td>Apply engine</td><td>Fill forms, upload resume, submit, log</td><td><span class="pill todo">Planned</span></td></tr>
-      <tr><td>Hirist, iimjobs, LinkedIn plugins</td><td>Search and apply</td><td><span class="pill todo">Planned</span></td></tr>
+      <tr><td>Extension support for Hirist, iimjobs, Indeed and others</td><td>Collect listings from your open tab</td><td><span class="pill todo">Planned</span></td></tr>
       <tr><td>Career-page crawler</td><td>Generic openings finder and applicant-system templates</td><td><span class="pill todo">Planned</span></td></tr>
       <tr><td>Scheduler and alerts</td><td>Daily runs and notifications</td><td><span class="pill todo">Planned</span></td></tr>
     </tbody></table></div>
