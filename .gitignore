@@ -3,3 +3,4 @@ jobs.db
 node_modules/
 web/dist/
 *.zip
+e2e-fail-*.png

@@ -1,0 +1,112 @@
+// End-to-end test on the BUILT site (npm run build first). Every job source is mocked with fixtures that live only in this file;
+// nothing here is ever shipped or shown as a real job. Run: npm run e2e   (CHROMIUM=/path/to/chrome to use a specific browser)
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+
+const DIST = path.resolve('web/dist');
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.zip': 'application/zip' };
+const server = http.createServer((req, res) => {
+  const f = path.join(DIST, req.url === '/' ? 'index.html' : req.url.split('?')[0]);
+  if (!f.startsWith(DIST) || !fs.existsSync(f) || !fs.statSync(f).isFile()) { res.writeHead(404); return res.end(); }
+  res.writeHead(200, { 'content-type': MIME[path.extname(f)] ?? 'application/octet-stream' }); res.end(fs.readFileSync(f));
+});
+await new Promise(r => server.listen(0, '127.0.0.1', r));
+const BASE = `http://127.0.0.1:${server.address().port}/`;
+
+const JD = '<p>Requirements: React, TypeScript. 3-8 years of experience. Bachelor degree. Build dashboards.</p>';
+const json = body => ({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+async function mockSources(page, { nurse = false } = {}) {
+  await page.route(/remotive\.com/, r => r.fulfill(json({ jobs: nurse ? [] : [{ id: 1, url: 'https://remotive.com/remote-jobs/fe-1', title: 'Frontend Developer', company_name: 'RemoCo', candidate_required_location: 'Remote', publication_date: '2026-11-10T00:00:00', description: JD, salary: '$60k' }] })));
+  await page.route(/arbeitnow\.com/, r => r.fulfill(json({ links: {}, data: nurse ? [] : [{ slug: 'fe-x', title: 'Frontend Developer', company_name: 'RemoCo', location: 'Remote', remote: true, url: 'https://www.arbeitnow.com/jobs/fe-x', description: JD, created_at: 1762700000 }] })));
+  await page.route(/jobicy\.com/, r => r.fulfill({ status: 500, body: 'boom' }));            // one source failing must not stop the others
+  await page.route(/remoteok\.com/, r => r.fulfill(json([{ legal: 'x' }, { id: 9, url: 'https://remoteok.com/remote-jobs/9', position: 'Staff Nurse Educator', company: 'MedCo', description: 'Patient care and training. 5+ years.', location: 'Remote' }])));
+  await page.route(/boards-api\.greenhouse\.io/, r => r.fulfill(json({ jobs: [{ id: 1, title: 'Frontend Engineer', absolute_url: 'https://boards.greenhouse.io/testco/jobs/1', location: { name: 'Pune' }, content: '' }] }))); // no description
+}
+
+const RESUME_DEV = `Asha Rao\nBangalore | asha@example.com\nSummary\nFrontend developer.\nSkills\nReact, TypeScript, CSS\nExperience\nFrontend Developer, Acme   Jan 2019 - Present\n- Built dashboards\nEducation\nB.Tech Computer Science, Anna University 2018`;
+const RESUME_NURSE = `Priya Nair\nKochi, Kerala\nSKILLS\nPatient care, IV cannulation, Infection control\nWORK EXPERIENCE\nStaff Nurse - City Hospital  Mar 2018 - Present\nEDUCATION\nB.Sc Nursing, Kerala University 2017`;
+const file = (name, text, mimeType = 'text/plain') => ({ name, mimeType, buffer: Buffer.from(text) });
+
+const browser = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {});
+let failed = 0;
+const test = async (name, fn) => {
+  const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 } }), page = await ctx.newPage(), errors = [];
+  page.on('pageerror', e => errors.push(e.message)); page.on('console', m => m.type() === 'error' && !/Failed to load resource/.test(m.text()) && errors.push(m.text()));
+  try { await mockSources(page); await fn(page, ctx); assert.deepEqual(errors, [], 'console errors'); console.log('ok  -', name); }
+  catch (e) { failed++; console.log('FAIL-', name, '\n    ', e.message.split('\n')[0]); await page.screenshot({ path: `e2e-fail-${failed}.png` }).catch(() => {}); }
+  finally { await ctx.close(); }
+};
+const toast = page => page.locator('[role=status]');
+const upload = async (page, f) => page.setInputFiles('#resume', f);
+const home = async page => { await page.goto(BASE); await page.waitForSelector('h1'); };
+
+await test('invalid, empty and unsupported resumes are rejected with a clear message', async page => {
+  await home(page);
+  await upload(page, file('empty.txt', '')); await toast(page).filter({ hasText: 'empty' }).waitFor();
+  await upload(page, file('old.doc', 'x')); await toast(page).filter({ hasText: 'Old .doc' }).waitFor();
+  await upload(page, file('fake.pdf', 'not a pdf')); await toast(page).filter({ hasText: 'not a valid PDF' }).waitFor();
+  await upload(page, file('tiny.txt', 'hi')); await toast(page).filter({ hasText: 'No readable text' }).waitFor();
+  await page.waitForSelector('text=Upload your resume, get matched');
+});
+
+await test('upload, edit profile, search with a failing source, dedupe, save, track, persist', async page => {
+  await home(page); await upload(page, file('asha.txt', RESUME_DEV)); await page.waitForSelector('text=Hello, Asha');
+  await page.goto(BASE + '#/profile'); await page.waitForSelector('text=Review your profile');
+  assert.equal(await page.locator('input').nth(0).inputValue(), 'Asha Rao');
+  await page.locator('[aria-label="Add item"]').last().fill('Figma'); await page.keyboard.press('Enter');
+  await page.click('button:has-text("Confirm and update matches")'); await toast(page).filter({ hasText: 'Profile confirmed' }).waitFor();
+  await page.goto(BASE + '#/settings'); await page.waitForSelector('text=Matching and search');
+  await page.locator('textarea').first().fill('greenhouse:testco'); await page.click('button:has-text("Save settings")'); await toast(page).filter({ hasText: 'Preferences saved' }).waitFor();
+  await page.goto(BASE + '#/overview'); await page.click('button:has-text("Search")'); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+  await page.goto(BASE + '#/sources'); await page.waitForSelector('text=Job sources');
+  const card = n => page.locator('section[aria-label="Automatic sources"] > div').filter({ hasText: n });
+  await card('Jobicy').locator('text=Error').waitFor(); assert.match(await card('Jobicy').innerText(), /HTTP 500/);   // failure reported, not hidden
+  await card('Remotive').getByText(/^\d+ listings?$/).waitFor(); await card('Company career pages').getByText(/^\d+ listings?$/).waitFor();
+  await card('Adzuna').locator('text=Needs setup').waitFor();                                                          // unconfigured source is not pretended to work
+  await page.goto(BASE + '#/jobs'); await page.waitForSelector('a:has-text("Apply")');
+  await page.locator('select[aria-label="Minimum match"]').selectOption('0');
+  assert.equal(await page.locator('a:has-text("Frontend Developer")').count(), 1, 'same vacancy from two sources must collapse');
+  const href = await page.locator('a:has-text("Apply")').first().getAttribute('href');
+  assert.ok(/^https:\/\//.test(href), 'original link is https');
+  await page.locator('a.font-extrabold', { hasText: 'Frontend Developer' }).first().click(); await page.waitForSelector('text=Resume suitability');
+  assert.ok(await page.locator('a:has-text("Remotive")').count() && await page.locator('a:has-text("Arbeitnow")').count(), 'both source links kept');
+  await page.click('button:has-text("Save job")'); await page.waitForSelector('button:has-text("Saved")');
+  await page.selectOption('select[aria-label=Status]', 'applied'); await page.fill('textarea[aria-label=Notes]', 'Call HR'); await page.locator('textarea[aria-label=Notes]').blur(); await page.waitForTimeout(300);
+  await page.reload(); await page.goto(BASE + '#/applications'); await page.waitForSelector('text=Call HR');
+  await page.goto(BASE + '#/saved'); await page.waitForSelector('text=Saved jobs'); assert.ok(await page.locator('a.font-extrabold').count() >= 1);
+  await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0');
+  await page.waitForSelector('text=Frontend Engineer'); // the posting with no description still shows, with a clear message in its details
+  await page.locator('a.font-extrabold', { hasText: 'Frontend Engineer' }).first().click(); await page.waitForSelector('text=did not provide a description');
+});
+
+await test('different profession: a nurse resume produces nurse queries, no developer terms', async page => {
+  await home(page); await upload(page, file('priya.txt', RESUME_NURSE)); await page.waitForSelector('text=Hello, Priya');
+  const q = await page.locator('text=Searching for:').locator('..').innerText();
+  assert.match(q, /Staff Nurse/); assert.doesNotMatch(q, /developer|react|engineer/i);
+  await page.click('button:has-text("Search")'); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+  await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0'); await page.waitForSelector('text=Staff Nurse Educator');
+});
+
+await test('two profiles on one browser are isolated; switching restores each', async page => {
+  await home(page); await upload(page, file('asha.txt', RESUME_DEV)); await page.waitForSelector('text=Hello, Asha');
+  await page.click('button:has-text("Search")'); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+  await page.goto(BASE + '#/settings'); await page.waitForSelector('text=Profiles on this browser');
+  await page.fill('input[aria-label="New profile name"]', 'Second person'); await page.click('button:has-text("Add")'); await page.waitForSelector('text=Second person');
+  await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Upload your resume, get matched'); // fresh slot: no resume, no jobs
+  await page.goto(BASE + '#/jobs'); await page.waitForSelector('text=Upload your resume first');
+  await page.goto(BASE + '#/settings'); await page.locator('li', { hasText: 'My profile' }).locator('button:has-text("Switch")').click();
+  await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Hello, Asha');
+});
+
+await test('phone layout has no horizontal overflow; theme toggle works', async page => {
+  await page.setViewportSize({ width: 400, height: 800 }); await home(page); await upload(page, file('asha.txt', RESUME_DEV)); await page.waitForSelector('text=Hello, Asha');
+  for (const r of ['overview', 'jobs', 'profile', 'sources', 'settings', 'applications']) { await page.goto(BASE + '#/' + r); await page.waitForTimeout(300); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow on ${r}`); }
+  await page.click('button[aria-label^="Switch to"]'); assert.ok(await page.evaluate(() => !!document.documentElement.dataset.theme));
+});
+
+await browser.close(); server.close();
+if (failed) { console.log(`${failed} e2e test(s) failed`); process.exit(1); }
+console.log('all e2e tests passed');

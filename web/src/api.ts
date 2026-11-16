@@ -1,84 +1,155 @@
-export interface Job {
-  id: string; url: string; source: string; sourceKind: string; title: string; company: string; location: string; workMode: string;
-  expLevel: string; salary: string; summary: string; requiredSkills: string[]; matchedSkills: string[]; missingSkills: string[];
-  score: number; category: string; reasons: string[]; postedAt: string; deadline: string; status: string; firstSeen: string;
-}
-export interface Profile { name: string; totalExperienceYears: number; currentDesignation: string; allSkills: string[]; location: string; targetRoles: string[]; summary: string }
-export interface Company { ats: string; token: string; name?: string }
-export interface Prefs { roles: string[]; locations: string[]; workModes: string[]; minScore: number; blocklist: string[]; companies: Company[]; adzuna?: { id: string; key: string } }
-export interface PortalInfo { id: string; name: string; note: string; extension: boolean; searchUrl: (role: string, location: string) => string }
-export interface SourceInfo { id: string; name: string; note: string }
-export interface Run { adapter: string; name: string; status: string; reason: string; found: number; checked_at: string }
-export interface State { profile: Profile | null; prefs: Prefs | null; jobs: Job[]; statuses: string[]; portals: PortalInfo[]; sources: SourceInfo[]; runs: Run[] }
-
-import { careerPages } from '../../engine/adapters/ats.ts';
 import { apiSources } from '../../engine/adapters/apis.ts';
+import { careerPages } from '../../engine/adapters/ats.ts';
 import { PORTALS, portalName } from '../../engine/adapters/portalList.ts';
-import { ingest } from '../../engine/pipeline.ts';
+import { makeAi } from '../../engine/ai.ts';
 import { parseLocal } from '../../engine/localResume.ts';
+import { resumeCorpus } from '../../engine/match.ts';
+import { ingest, toJob } from '../../engine/pipeline.ts';
+import { normalizeProfile } from '../../engine/profile.ts';
+import { buildQueries } from '../../engine/queries.ts';
 import { STATUSES } from '../../engine/types.ts';
-import type { Job as EJob, Prefs as EPrefs, Profile as EProfile, RawJob } from '../../engine/types.ts';
-import { fileText } from './resumeFile.ts';
+import type { AdapterResult, Job, LogEntry, Prefs, Profile, Query, RawJob, Status } from '../../engine/types.ts';
+import { dot, embed } from './embed.ts';
+import { checkResume, fileText } from './resumeFile.ts';
+import * as store from './store.ts';
 
-const SOURCES = [careerPages, ...apiSources];
+export type { Job, LogEntry, Prefs, Profile, Status };
+export { STATUSES };
+export interface Run { adapter: string; name: string; status: string; reason: string; found: number; checked_at: string; cached?: boolean; added?: number; duplicate?: number }
+export interface State { slot: store.Slot; slots: store.Slot[]; profile: Profile | null; prefs: Prefs | null; jobs: Job[]; runs: Run[]; logs: LogEntry[]; lastSearch: string; queries: string[] }
+export const SOURCES = [careerPages, ...apiSources];
+export { PORTALS };
 
-// Everything runs in the browser. Data lives in this browser's localStorage and never leaves it,
-// except the public job-board requests for the companies you list.
-const read = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem('ja.' + k); return v ? JSON.parse(v) : d; } catch { return d; } };
-const write = (k: string, v: unknown) => {
-  try { localStorage.setItem('ja.' + k, JSON.stringify(v)); } catch { throw new Error('Browser storage is full or blocked. Remove some jobs or allow site storage.'); }
-};
+const CACHE_TTL = 6 * 3600e3;
+const DEFAULT_PREFS: Prefs = { roles: [], locations: [], workModes: [], minScore: 60, blocklist: [], companies: [] };
 
-function needProfile() {
-  const profile = read<EProfile | null>('profile', null), prefs = read<EPrefs | null>('prefs', null);
+async function need() {
+  const [profile, prefs] = await Promise.all([store.get<Profile>('profile'), store.get<Prefs>('prefs')]);
   if (!profile || !prefs) throw new Error('Upload a resume first');
   return { profile, prefs };
 }
+const jobsOf = async () => (await store.get<Job[]>('jobs')) ?? [];
+const rawOf = (j: Job): RawJob => ({ source: j.source, sourceKind: j.sourceKind, title: j.title, company: j.company, location: j.location, url: j.url, description: j.description, workMode: j.workMode || undefined, salary: j.salary, postedAt: j.postedAt, deadline: j.deadline, externalId: j.externalId, exp: j.expMin == null ? '' : `${j.expMin}${j.expMax != null ? '-' + j.expMax : '+'} years` });
+
+/** Recompute every stored job against the current profile and preferences, keeping the user's own data on each job. */
+async function rescore() {
+  const { profile, prefs } = await need();
+  const out: Job[] = [];
+  for (const j of await jobsOf()) {
+    const n = toJob(rawOf(j), profile, prefs, j.semantic);
+    if (typeof n === 'string') continue;
+    out.push({ ...n, id: j.id, sources: j.sources, status: j.status, firstSeen: j.firstSeen, saved: j.saved, notes: j.notes, appliedAt: j.appliedAt, semantic: j.semantic });
+  }
+  await store.set('jobs', out);
+}
+
+const pool = async <T,>(items: T[], n: number, f: (x: T) => Promise<void>) => { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await f(items[i++]); })); };
 
 export const api = {
-  state: async (): Promise<State> => ({
-    profile: read('profile', null), prefs: read('prefs', null),
-    jobs: read<EJob[]>('jobs', []).sort((a, b) => b.score - a.score || b.firstSeen.localeCompare(a.firstSeen)),
-    statuses: STATUSES, portals: PORTALS, sources: SOURCES.map(({ id, name, note }) => ({ id, name, note })), runs: read<Run[]>('runs', []),
-  }),
+  init: async () => { const slots = await store.initSlots(); return slots; },
+
+  state: async (): Promise<State> => {
+    const [slots, profile, prefs, jobs, runs, logs, lastSearch] = await Promise.all([store.slots(), store.get<Profile>('profile'), store.get<Prefs>('prefs'), store.get<Job[]>('jobs'), store.get<Run[]>('runs'), store.get<LogEntry[]>('logs'), store.get<string>('lastSearch')]);
+    const slot = slots.find(s => s.id === store.slotId()) ?? slots[0];
+    return { slot, slots, profile: profile ?? null, prefs: prefs ?? null, jobs: (jobs ?? []).sort((a, b) => b.score - a.score || b.firstSeen.localeCompare(a.firstSeen)), runs: runs ?? [], logs: logs ?? [], lastSearch: lastSearch ?? '',
+      queries: profile && prefs ? buildQueries(profile, prefs) : [] };
+  },
+
+  /** Read a resume file, extract the profile (own AI key if configured, otherwise the free on-device parser), and keep existing preferences. */
   resume: async (f: File) => {
-    const profile = parseLocal(await fileText(f));
-    write('profile', profile);
-    const old = read<EPrefs | null>('prefs', null);
-    write('prefs', {
-      workModes: [], minScore: 60, blocklist: [], companies: [], ...old,
+    await checkResume(f);
+    const text = await fileText(f);
+    const old = await store.get<Prefs>('prefs');
+    let profile: Profile, note = '';
+    if (old?.aiKey && old.aiProvider) {
+      try { profile = await makeAi(old.aiProvider, old.aiKey).extractProfile(text); }
+      catch (e) { profile = parseLocal(text); note = `AI extraction failed (${(e as Error).message}); used the on-device parser.`; }
+    } else profile = parseLocal(text);
+    await store.set('profile', profile);
+    await store.set('prefs', {
+      ...DEFAULT_PREFS, ...old,
       roles: old?.roles.length ? old.roles : profile.targetRoles,
       locations: old?.locations.length ? old.locations : profile.location ? [profile.location] : [],
-    } satisfies EPrefs);
+    } satisfies Prefs);
+    return note;
   },
-  prefs: async (p: Prefs) => write('prefs', p),
-  search: async (onSource?: (r: { adapter: string; name: string; status: string; reason: string; found: number }) => void) => {
-    const { profile, prefs } = needProfile();
-    const query = { roles: prefs.roles, locations: prefs.locations, companies: prefs.companies as EPrefs['companies'], adzuna: prefs.adzuna };
-    const found = await Promise.all(SOURCES.map(async a => { const r = await a.search(query); onSource?.({ adapter: r.adapter, name: r.name, status: r.status, reason: r.reason, found: r.jobs.length }); return r; })); // each adapter reports its own failure; the UI shows each as it lands
-    const jobs = read<EJob[]>('jobs', []);
-    const checked_at = new Date().toISOString();
-    const results = found.map(r => ({ adapter: r.adapter, name: r.name, status: r.status, reason: r.reason, found: r.jobs.length, checked_at, ...(c => ({ added: c.added, duplicate: c.duplicate }))(ingest(r.jobs, profile, prefs, jobs)) }));
-    write('jobs', jobs);
-    write('runs', results.map(({ adapter, name, status, reason, found, checked_at }) => ({ adapter, name, status, reason, found, checked_at })));
-    return { results };
+
+  saveProfile: async (p: Profile) => { await store.set('profile', normalizeProfile(p)); await rescore(); },
+  savePrefs: async (p: Prefs) => { await store.set('prefs', p); await rescore(); },
+  suggestQueries: async () => { const { profile, prefs } = await need(); if (!prefs.aiKey || !prefs.aiProvider) return buildQueries(profile, prefs); return [...new Set([...(await makeAi(prefs.aiProvider, prefs.aiKey).suggestQueries(profile)), ...buildQueries(profile, prefs)])].slice(0, 8); },
+
+  /** Search every source in the background: bounded concurrency, per-source status as each finishes, cancellable, cached for 6 hours. */
+  search: async (o: { fresh?: boolean; signal?: AbortSignal; onSource?: (r: Run) => void; onPhase?: (s: string) => void } = {}) => {
+    const { profile, prefs } = await need();
+    const queries = buildQueries(profile, prefs);
+    const query: Query = { roles: prefs.roles, queries, locations: prefs.locations, companies: prefs.companies, adzuna: prefs.adzuna };
+    const sig = JSON.stringify([queries, prefs.locations, prefs.companies, !!prefs.adzuna?.id]);
+    const cache = (await store.get<Record<string, { at: number; sig: string; jobs: RawJob[] }>>('cache')) ?? {};
+    const logs: LogEntry[] = [], log = (e: LogEntry) => logs.push(e);
+    const results: Run[] = [], raws: RawJob[] = [];
+
+    await pool(SOURCES, 3, async a => {
+      let r: AdapterResult, cached = false;
+      const c = cache[a.id];
+      if (!o.fresh && c && c.sig === sig && Date.now() - c.at < CACHE_TTL) { r = { adapter: a.id, name: a.name, status: 'ok', reason: `From cache (${Math.round((Date.now() - c.at) / 60000)} min old). Use "Fresh search" to refetch.`, jobs: c.jobs }; cached = true; }
+      else { r = await a.search(query, { log, signal: o.signal }); if (r.status === 'ok') cache[a.id] = { at: Date.now(), sig, jobs: r.jobs }; }
+      const run: Run = { adapter: r.adapter, name: r.name, status: r.status, reason: r.reason, found: r.jobs.length, checked_at: new Date().toISOString(), cached };
+      results.push(run); raws.push(...r.jobs); o.onSource?.(run);
+    });
+
+    // optional on-device semantic similarity for the responsibilities score; any failure falls back to word overlap
+    let sim: Map<string, number> | undefined;
+    if (prefs.semantic && raws.length) {
+      try {
+        o.onPhase?.('Loading the on-device model (first time downloads ~25 MB)…');
+        const [rv] = await embed([resumeCorpus(profile).slice(0, 2000)]);
+        sim = new Map();
+        for (let i = 0; i < raws.length; i += 16) {
+          o.onPhase?.(`Comparing job descriptions to your resume (${Math.min(i + 16, raws.length)}/${raws.length})…`);
+          const batch = raws.slice(i, i + 16), vs = await embed(batch.map(r => `${r.title}. ${r.description}`.replace(/<[^>]+>/g, ' ').slice(0, 1500)));
+          batch.forEach((r, k) => sim!.set(r.url, dot(rv, vs[k])));
+        }
+      } catch (e) { sim = undefined; log({ at: new Date().toISOString(), source: 'semantic', level: 'warn', msg: `Semantic matching unavailable (${(e as Error).message}); using word overlap.` }); }
+    }
+
+    o.onPhase?.('Scoring and removing duplicates…');
+    const jobs = await jobsOf();
+    const counts = ingest(raws, profile, prefs, jobs, r => sim?.get(r.url));
+    if (sim) for (const j of jobs) if (sim.has(j.url) && j.semantic == null) j.semantic = sim.get(j.url);
+    const perSource = results.map(r => ({ ...r }));
+    await Promise.all([store.set('jobs', jobs), store.set('runs', perSource), store.set('cache', cache), store.set('lastSearch', new Date().toISOString()),
+      store.set('logs', [...logs, ...((await store.get<LogEntry[]>('logs')) ?? [])].slice(0, 300))]);
+    return { results: perSource, added: counts.added, duplicate: counts.duplicate };
   },
-  status: async (id: string, s: string) => { write('jobs', read<EJob[]>('jobs', []).map(j => j.id === id ? { ...j, status: s as EJob['status'] } : j)); },
+
   /** Pull listings the browser extension collected from portal pages you viewed. */
   importExtension: () => new Promise<Record<string, number>>((resolve, reject) => {
     const timer = setTimeout(() => { removeEventListener('message', onMsg); reject(new Error('Extension not detected. Install it from the extension/ folder and reload this page.')); }, 1500);
-    const onMsg = (e: MessageEvent) => {
+    const onMsg = async (e: MessageEvent) => {
       if (e.source !== window || e.data?.type !== 'jobagent-jobs') return;
       clearTimeout(timer); removeEventListener('message', onMsg);
       try {
-        const { profile, prefs } = needProfile();
+        const { profile, prefs } = await need();
         const raws = (e.data.jobs as RawJob[]).map(j => ({ ...j, source: portalName(j.source), sourceKind: 'portal' as const, description: j.description ?? '' }));
-        const jobs = read<EJob[]>('jobs', []);
-        const counts = ingest(raws, profile, prefs, jobs);
-        write('jobs', jobs); resolve({ received: raws.length, ...counts });
+        const jobs = await jobsOf(); const counts = ingest(raws, profile, prefs, jobs);
+        await store.set('jobs', jobs); resolve({ received: raws.length, ...counts });
       } catch (err) { reject(err); }
     };
     addEventListener('message', onMsg);
     postMessage({ type: 'jobagent-pull' }, location.origin);
   }),
+
+  updateJob: async (id: string, patch: Partial<Pick<Job, 'status' | 'saved' | 'notes'>>) => {
+    const jobs = await jobsOf();
+    await store.set('jobs', jobs.map(j => j.id !== id ? j : { ...j, ...patch, appliedAt: patch.status === 'applied' && !j.appliedAt ? new Date().toISOString() : j.appliedAt }));
+  },
+
+  newSlot: async (name: string) => { const list = await store.slots(); const s = { id: `p${Date.now().toString(36)}`, name: name.trim() || 'New profile' }; await store.saveSlots([...list, s]); await store.useSlot(s.id); },
+  switchSlot: (id: string) => store.useSlot(id),
+  renameSlot: async (id: string, name: string) => store.saveSlots((await store.slots()).map(s => s.id === id ? { ...s, name: name.trim() || s.name } : s)),
+  deleteSlot: async (id: string) => {
+    const list = await store.slots(); if (list.length < 2) { await store.removeSlot(id); return; }
+    await store.removeSlot(id); const rest = list.filter(s => s.id !== id); await store.saveSlots(rest); await store.useSlot(rest[0].id);
+  },
+  clearJobs: async () => { await Promise.all([store.set('jobs', []), store.set('runs', []), store.set('cache', {}), store.set('lastSearch', '')]); },
 };

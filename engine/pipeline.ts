@@ -1,4 +1,4 @@
-import { canonicalUrl, fingerprint, htmlToText } from './text.ts';
+import { canonicalUrl, fingerprint, htmlToText, norm, salaryValue, similarity } from './text.ts';
 import { category, detectWorkMode, expLevel, match } from './match.ts';
 import type { Job, Prefs, Profile, RawJob } from './types.ts';
 
@@ -11,42 +11,54 @@ function hash(s: string): string {
 
 export type Rejection = 'missing title/company' | 'no verifiable https url' | 'blocklisted';
 
-/** Raw adapter output to a scored job. Refuses anything without a verifiable source and original URL. */
-export function toJob(raw: RawJob, profile: Profile, prefs: Prefs): Job | Rejection {
+/** Raw adapter output to a scored job. Refuses anything without a verifiable source and original URL. `semantic` is an optional embedding similarity (0..1) for responsibilities. */
+export function toJob(raw: RawJob, profile: Profile, prefs: Prefs, semantic?: number): Job | Rejection {
   if (!raw.title?.trim() || !raw.company?.trim()) return 'missing title/company';
   let cUrl: string;
   try { if (!/^https:\/\//i.test(raw.url)) throw 0; cUrl = canonicalUrl(raw.url); } catch { return 'no verifiable https url'; }
   const hay = `${raw.title} ${raw.company}`.toLowerCase();
   if (prefs.blocklist.some(b => b && hay.includes(b.toLowerCase()))) return 'blocklisted';
 
-  const description = htmlToText(raw.description ?? '').slice(0, 8000);
+  const description = htmlToText(raw.description ?? '').slice(0, 12000);
   const workMode = raw.workMode || detectWorkMode(`${raw.location} ${raw.title} ${description.slice(0, 600)}`);
-  const m = match(profile, prefs, { title: raw.title, location: raw.location, workMode, text: `${raw.title}\n${raw.exp ?? ''}\n${description}` });
+  const m = match(profile, prefs, { title: raw.title, location: raw.location ?? '', workMode, text: `${raw.title}\n${raw.exp ?? ''}\n${description}` }, semantic);
   const fp = fingerprint(raw.company, raw.title, raw.location);
   return {
-    id: hash(fp), fingerprint: fp, canonicalUrl: cUrl, url: raw.url,
-    source: raw.source, sourceKind: raw.sourceKind, title: raw.title.trim(), company: raw.company.trim(), location: (raw.location ?? '').trim(), workMode,
-    expMin: m.expMin, expMax: m.expMax, expLevel: expLevel(m.expMin), salary: raw.salary ?? '',
+    id: hash(fp), fingerprint: fp, canonicalUrl: cUrl, url: raw.url, externalId: raw.externalId ?? '', sources: [{ source: raw.source, url: raw.url }],
+    source: raw.source, sourceKind: raw.sourceKind, title: raw.title.trim(), company: raw.company.trim(), location: (raw.location ?? '').trim(), workMode, locationFit: m.locationFit,
+    expMin: m.expMin, expMax: m.expMax, expLevel: expLevel(m.expMin), salary: raw.salary ?? '', salaryValue: salaryValue(raw.salary ?? ''),
     summary: description.slice(0, 300) + (description.length > 300 ? '…' : ''), description,
-    requiredSkills: m.required, matchedSkills: m.matched, missingSkills: m.missing,
+    requiredSkills: m.required, optionalSkills: m.optional, matchedSkills: m.matched, missingSkills: m.missing, missingOptional: m.missingOptional,
     score: m.score, category: category(m.score), reasons: m.reasons, breakdown: m.breakdown,
     postedAt: raw.postedAt ?? '', deadline: raw.deadline ?? '', status: 'new', firstSeen: new Date().toISOString(),
   };
 }
 
-/** Duplicate if company+title+location OR the canonical URL is already in `list`. */
+const titleWords = (t: string) => new Set(t.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2));
+const titleOverlap = (a: string, b: string) => { const A = titleWords(a), B = titleWords(b); let n = 0; for (const w of A) if (B.has(w)) n++; return A.size && B.size ? n / Math.max(A.size, B.size) : 0; };
+
+/** The existing entry that is the same vacancy, if any. Different vacancies with similar titles stay separate. */
+export function findDuplicate(list: Job[], j: Job): Job | undefined {
+  return list.find(x =>
+    x.fingerprint === j.fingerprint || x.canonicalUrl === j.canonicalUrl ||
+    (j.externalId && x.externalId === j.externalId && x.source === j.source) ||
+    (norm(x.company) === norm(j.company) && titleOverlap(x.title, j.title) >= 0.6 && x.description.length > 200 && j.description.length > 200 && similarity(x.description, j.description) >= 0.85
+      && (!x.location || !j.location || norm(x.location) === norm(j.location) || x.workMode === 'remote' && j.workMode === 'remote')));
+}
+
+/** Add `j` unless it is a duplicate; a duplicate contributes its source link to the canonical entry. */
 export function addJob(list: Job[], j: Job): 'added' | 'duplicate' {
-  if (list.some(x => x.fingerprint === j.fingerprint || x.canonicalUrl === j.canonicalUrl)) return 'duplicate';
+  const dup = findDuplicate(list, j);
+  if (dup) { if (!dup.sources.some(s => canonicalUrl(s.url) === j.canonicalUrl)) dup.sources.push(...j.sources); return 'duplicate'; }
   list.push(j); return 'added';
 }
 
 /** Score and add raw jobs to `list`; returns counts so nothing is dropped silently. */
-export function ingest(raws: RawJob[], profile: Profile, prefs: Prefs, list: Job[]) {
+export function ingest(raws: RawJob[], profile: Profile, prefs: Prefs, list: Job[], semantic?: (raw: RawJob) => number | undefined) {
   const out: Record<string, number> = { added: 0, duplicate: 0 };
   for (const raw of raws) {
-    const j = toJob(raw, profile, prefs);
-    // shortcut: full text is trimmed to 2000 chars so many jobs fit in localStorage; upgrade to IndexedDB for more
-    const k = typeof j === 'string' ? `rejected: ${j}` : addJob(list, { ...j, description: j.description.slice(0, 2000) });
+    const j = toJob(raw, profile, prefs, semantic?.(raw));
+    const k = typeof j === 'string' ? `rejected: ${j}` : addJob(list, j);
     out[k] = (out[k] ?? 0) + 1;
   }
   return out;

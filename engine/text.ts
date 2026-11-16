@@ -20,3 +20,17 @@ export function canonicalUrl(u: string): string {
 
 export const norm = (s: string) => (s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 export const fingerprint = (company: string, title: string, location: string) => [company, title, location].map(norm).join('|');
+
+const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+/** Jaccard similarity of 5-word shingles: 1 = same text, 0 = nothing shared. */
+export function similarity(a: string, b: string): number {
+  const sh = (t: string) => { const w = words(t), out = new Set<string>(); for (let i = 0; i + 5 <= w.length; i++) out.add(w.slice(i, i + 5).join(' ')); return out; };
+  const A = sh(a), B = sh(b); if (!A.size || !B.size) return 0;
+  let n = 0; for (const x of A) if (B.has(x)) n++;
+  return n / (A.size + B.size - n);
+}
+/** Biggest number in a salary string ("$50k", "INR 10-20", "12 LPA"); 0 when none. Only for sorting, currencies are not converted. */
+export function salaryValue(s: string): number {
+  const nums = [...(s ?? '').replace(/,/g, '').matchAll(/(\d+(?:\.\d+)?)\s*(k|m|lpa|lakhs?)?/gi)].map(m => +m[1] * (/^k$/i.test(m[2] ?? '') ? 1e3 : /^m$/i.test(m[2] ?? '') ? 1e6 : /lpa|lakh/i.test(m[2] ?? '') ? 1e5 : 1));
+  return nums.length ? Math.max(...nums) : 0;
+}

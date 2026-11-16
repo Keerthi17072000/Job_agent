@@ -6,7 +6,8 @@
     "dev": "vite web",
     "build": "vite build web",
     "test": "node --test engine/engine.test.ts extension/sites.test.js",
-    "typecheck": "tsc -p web --noEmit && tsc -p engine --noEmit"
+    "typecheck": "tsc -p web --noEmit && tsc -p engine --noEmit",
+    "e2e": "node e2e/run.mjs"
   },
   "dependencies": {
     "mammoth": "^1.8.0",
@@ -21,6 +22,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
     "jsdom": "^31.0.1",
+    "playwright": "^1.65.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.6.0",
     "vite": "^6.0.0"
