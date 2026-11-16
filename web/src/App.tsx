@@ -81,6 +81,22 @@ export default function App() {
   useEffect(() => { load().catch(e => setMsg(e.message)); }, []);
   useEffect(() => { if (!msg || busy) return; const t = setTimeout(() => setMsg(''), 7000); return () => clearTimeout(t); }, [msg, busy]);
 
+  // Pull listings the extension collected whenever the user comes back to this tab. Silent when there is no extension or nothing waiting.
+  useEffect(() => {
+    if (!st?.profile) return;
+    let pulling = false;
+    const pull = async () => {
+      if (pulling || document.visibilityState !== 'visible') return;
+      pulling = true;
+      try {
+        const r = await api.importExtension();
+        if (r.received) { setMsg(`Imported ${r.received} from the extension: ${r.added} added, ${r.duplicate} duplicates, ${r.received - r.added - r.duplicate} rejected`); setSt(await api.state()); }
+      } catch { /* no extension installed */ } finally { pulling = false; }
+    };
+    document.addEventListener('visibilitychange', pull); addEventListener('focus', pull);
+    return () => { document.removeEventListener('visibilitychange', pull); removeEventListener('focus', pull); };
+  }, [st?.profile]);
+
   const run = async (label: string, fn: () => Promise<unknown>, resetPrefs = false) => {
     setBusy(true); setMsg(label);
     try { await fn(); setMsg(m => m === label ? '' : m); await load(resetPrefs); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
@@ -204,10 +220,15 @@ export default function App() {
                 : <p className="text-xs text-mute">{r?.reason ?? s.note}</p>}
               {r && !scanning && <p className="font-mono text-[11px] text-mute">{jobs.filter(j => j.source === s.name || (s.id === 'career-pages' && j.sourceKind === 'career')).length} jobs stored</p>}</Card></Reveal>;
           })}</section>
-          <Reveal><Card className="space-y-2.5 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><b className="text-sm">Restricted portals: use the browser extension</b>
+          <Reveal><Card className="space-y-3 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><b className="text-sm">Naukri, LinkedIn, Indeed and other restricted portals</b>
             <Button variant="outline" className="h-8" disabled={busy || !st.profile} onClick={() => run('Importing…', async () => { const r = await api.importExtension(); setMsg(`Imported ${r.received}: ${r.added} added, ${r.duplicate} duplicates, ${r.received - r.added - r.duplicate} rejected (no verifiable https link)`); })}>Import from extension</Button></div>
-            <p className="text-xs text-mute">These sites forbid automated reading, so the app never opens them. Install the extension, click “Send to Job Agent” on a job list in your own tab, then import.</p>
-            <div className="flex flex-wrap gap-1.5">{st.portals.map(p => <Badge key={p.id} tone={p.extension ? 'brand' : 'mute'} title={p.note}>{p.name}{p.extension ? '' : ' (soon)'}</Badge>)}</div></Card></Reveal>
+            <p className="text-xs text-mute">These sites forbid automated reading, so the app never opens or reads them itself. Open a portal's search below (in your own logged-in browser), then click <b>Send to Job Agent</b> on the results page. Come back to this tab and the listings import automatically. One page per click keeps it low volume.</p>
+            <div className="flex flex-wrap gap-1.5">{st.portals.map(p => { const role = prefs?.roles[0] ?? '', loc = prefs?.locations[0] ?? '';
+              return role ? <a key={p.id} href={p.searchUrl(role, loc)} target="_blank" rel="noopener noreferrer" title={`Search ${p.name} for ${role}. ${p.note}`} className="inline-flex items-center gap-1 rounded-md bg-brand-soft px-2 py-1 text-xs font-medium text-brand-ink transition-transform hover:-translate-y-0.5">{p.name} ↗</a>
+                : <Badge key={p.id} title="Add a target role in Preferences to enable the search link">{p.name}</Badge>; })}</div>
+            <details className="text-xs text-mute"><summary className="cursor-pointer hover:text-ink">Install the extension (once)</summary>
+              <ol className="mt-2 list-decimal space-y-1 pl-5"><li><a className="font-medium text-brand-ink underline" href="job-agent-extension.zip" download>Download job-agent-extension.zip</a> and unzip it.</li><li>Open <code className="font-mono">chrome://extensions</code> and turn on Developer mode.</li><li>Click Load unpacked and pick the unzipped folder.</li><li>If a portal captures nothing, click <b>Diagnose</b> on its page and send me the copied text so I can fix that portal.</li></ol>
+              <p className="mt-2">Portal selectors and search links are unverified until you try each one.</p></details></Card></Reveal>
         </div>
       </div>
     </section>

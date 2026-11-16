@@ -6,7 +6,7 @@ export interface Job {
 export interface Profile { name: string; totalExperienceYears: number; currentDesignation: string; allSkills: string[]; location: string; targetRoles: string[]; summary: string }
 export interface Company { ats: string; token: string; name?: string }
 export interface Prefs { roles: string[]; locations: string[]; workModes: string[]; minScore: number; blocklist: string[]; companies: Company[]; adzuna?: { id: string; key: string } }
-export interface PortalInfo { id: string; name: string; note: string; extension: boolean }
+export interface PortalInfo { id: string; name: string; note: string; extension: boolean; searchUrl: (role: string, location: string) => string }
 export interface SourceInfo { id: string; name: string; note: string }
 export interface Run { adapter: string; name: string; status: string; reason: string; found: number; checked_at: string }
 export interface State { profile: Profile | null; prefs: Prefs | null; jobs: Job[]; statuses: string[]; portals: PortalInfo[]; sources: SourceInfo[]; runs: Run[] }

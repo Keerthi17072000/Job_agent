@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Job Agent",
-  "version": "0.2",
+  "version": "0.3",
   "description": "Collects the job listings you are viewing and hands them to your Job Agent page.",
   "permissions": ["storage"],
+  "action": { "default_title": "Job Agent" },
   "background": { "service_worker": "background.js" },
   "content_scripts": [
-    { "matches": ["https://www.naukri.com/*", "https://www.linkedin.com/jobs/*"], "js": ["content.js"] },
-    { "matches": ["https://keerthi17072000.github.io/Job_agent/*", "http://127.0.0.1:5173/*"], "js": ["bridge.js"] }
+    { "matches": ["https://www.naukri.com/*", "https://www.linkedin.com/jobs/*", "https://*.indeed.com/*", "https://www.glassdoor.co.in/*", "https://www.glassdoor.com/*", "https://www.foundit.in/*", "https://www.hirist.tech/*", "https://www.iimjobs.com/*", "https://www.shine.com/*", "https://wellfound.com/*", "https://www.instahyre.com/*", "https://cutshort.io/*"], "js": ["sites.js", "content.js"] },
+    { "matches": ["https://keerthi17072000.github.io/Job_agent/*", "http://127.0.0.1:5173/*", "http://localhost:5173/*"], "js": ["bridge.js"] }
   ]
 }

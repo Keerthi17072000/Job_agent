@@ -10,7 +10,8 @@ Your resume and jobs are stored in your own browser (localStorage) and never upl
    - Company career pages: Greenhouse, Lever, Ashby and SmartRecruiters boards. Add them as `ats:token` lines (e.g. `greenhouse:stripe`, `lever:cred`) or click "Fill with example boards".
    - Public job-board APIs: Remotive, Jobicy, Arbeitnow, RemoteOK (remote and international roles).
    - Adzuna India: optional, needs your own free key from developer.adzuna.com (Preferences).
-3. Naukri and LinkedIn forbid automated reading, so the app never opens them. Install the extension (`chrome://extensions`, Developer mode, Load unpacked, pick `extension/`), click **Send to Job Agent** on a job list in your own logged-in tab, then click **Import from extension** in the app.
+3. Naukri, LinkedIn, Indeed, Glassdoor, Foundit and similar sites forbid automated reading, so the app never opens or reads them. In the app's portal card click a portal to open its search in your own tab (log in if asked), then click **Send to Job Agent** on the results page. Back in the app the listings import automatically. If a portal captures nothing, click **Diagnose** in the same panel and send the copied text so its selectors can be fixed.
+   - Install the extension once: download `job-agent-extension.zip` from the app (or use the `extension/` folder), unzip, `chrome://extensions`, Developer mode, Load unpacked.
 
 ## Rules the code enforces
 - Every stored job has a source and an https original URL, or it is rejected and counted.
@@ -27,6 +28,6 @@ npm install && npm test && npm run dev    # http://localhost:5173
 ## Not verified / not built
 - Verified live from a browser: Greenhouse, Lever, Ashby, SmartRecruiters, Remotive, Jobicy, Arbeitnow and RemoteOK (CORS and response shape). Adzuna is from its documentation only.
 - Most free APIs list remote or international jobs. For Indian listings use Adzuna or the extension.
-- Naukri and LinkedIn selectors in the extension are unverified; the extension collects list cards only, so those jobs lack descriptions and score weakly.
-- Hirist, iimjobs, Foundit, Shine, Indeed, Glassdoor, Wellfound, Instahyre, Cutshort have no extension support yet. Workday and The Muse (blocks browser requests) are not supported.
+- All portal selectors, URL patterns and search links are unverified until tried. Jobs from list pages have no description and score weakly; opening a job's own page and clicking Send captures the full description where the site publishes schema.org data.
+- Workday and The Muse (blocks browser requests) are not supported.
 - Resume parsing is rule-based: about 100 known technologies, no project extraction. Storage is capped (2000 characters of description per job).

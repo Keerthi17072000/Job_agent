@@ -6,6 +6,7 @@ const { match, category, parseExp, expLevel } = await import('./match.ts');
 const { canonicalUrl, htmlToText } = await import('./text.ts');
 const { toJob, ingest } = await import('./pipeline.ts');
 const { mapRemotive, mapJobicy, mapArbeitnow, mapRemoteOk, mapAdzuna, apiSources } = await import('./adapters/apis.ts');
+const { PORTALS } = await import('./adapters/portalList.ts');
 const { mapGreenhouse, mapLever, mapAshby, mapSmartRecruiters, titleRelevant } = await import('./adapters/ats.ts');
 const { parseLocal } = await import('./localResume.ts');
 
@@ -90,4 +91,13 @@ test('sources report a clear reason instead of silently returning nothing', asyn
   for (const a of apiSources) assert.equal((await a.search(q)).status, 'not_configured');
   const adz = apiSources.find(a => a.id === 'adzuna')!;
   assert.match((await adz.search({ ...q, roles: ['x'] })).reason, /Adzuna/);
+});
+
+test('portal search links are https, carry the role and location, and survive odd input', () => {
+  for (const p of PORTALS) {
+    const u = new URL(p.searchUrl('React Developer', 'Bangalore'));
+    assert.equal(u.protocol, 'https:'); assert.match(decodeURIComponent(u.href).toLowerCase(), /react[ -]developer/);
+    assert.doesNotThrow(() => new URL(p.searchUrl('C++ & "x" <y>', '')));
+  }
+  assert.equal(PORTALS.find(p => p.id === 'naukri')!.searchUrl('React Developer', 'Bangalore'), 'https://www.naukri.com/react-developer-jobs-in-bangalore');
 });

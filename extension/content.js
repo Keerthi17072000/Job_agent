@@ -1,24 +1,22 @@
-// Runs only in the user's own logged-in tab and only when the user clicks the button:
-// no crawling, no automated page loads. Selectors are unverified against the live sites.
-const text = (e, sel) => e.querySelector(sel)?.textContent.trim();
-const SITES = {
-  'www.naukri.com': {
-    source: 'naukri', card: '.srp-jobtuple-wrapper',
-    read: e => ({ title: text(e, 'a.title'), url: e.querySelector('a.title')?.href, company: text(e, '.comp-name'),
-      location: text(e, '.loc-wrap'), exp: text(e, '.exp-wrap'), skills: [...e.querySelectorAll('.tags-gt li')].map(l => l.textContent.trim()) }),
-  },
-  'www.linkedin.com': {
-    source: 'linkedin', card: '.job-card-container',
-    read: e => ({ title: text(e, '.job-card-list__title'), url: e.querySelector('a.job-card-container__link')?.href,
-      company: text(e, '.artdeco-entity-lockup__subtitle'), location: text(e, '.job-card-container__metadata-item'), exp: '', skills: [] }),
-  },
-}[location.hostname];
+// Adds a small panel on supported portals. Nothing is read until you click Send; nothing loads pages for you.
+const S = globalThis.JobAgentSites;
+if (S.siteFor(location.hostname)) {
+  const panel = document.createElement('div');
+  panel.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;display:flex;gap:6px;align-items:center;font:600 13px system-ui';
+  const mk = (label, bg, fg) => Object.assign(document.createElement('button'), { textContent: label, style: `padding:9px 13px;border:0;border-radius:8px;cursor:pointer;font:inherit;background:${bg};color:${fg};box-shadow:0 4px 14px rgba(0,0,0,.25)` });
+  const send = mk('Send to Job Agent', 'linear-gradient(100deg,#ea5420,#f59e0b)', '#1b0d06'), diag = mk('Diagnose', '#1f2433', '#e8ecf3');
+  const reset = () => setTimeout(() => { send.textContent = 'Send to Job Agent'; diag.textContent = 'Diagnose'; }, 5000);
 
-const btn = Object.assign(document.createElement('button'), { textContent: 'Send to Job Agent' });
-btn.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:99999;padding:10px 14px;background:#0f6e6e;color:#fff;border:0;border-radius:6px;font:600 14px system-ui;cursor:pointer';
-btn.onclick = () => {
-  const jobs = [...document.querySelectorAll(SITES.card)].map(e => ({ ...SITES.read(e), source: SITES.source })).filter(j => j.title && j.url);
-  btn.textContent = 'Collecting…';
-  chrome.runtime.sendMessage({ type: 'add', jobs }, r => { btn.textContent = r ? `Collected ${r.received} (${r.total} waiting). Now click Import in Job Agent.` : 'Failed'; setTimeout(() => btn.textContent = 'Send to Job Agent', 5000); });
-};
-document.body.append(btn);
+  send.onclick = () => {
+    const { jobs, via } = S.extract(document, location);
+    if (!jobs.length) { send.textContent = 'Found nothing on this page. Try Diagnose.'; return reset(); }
+    chrome.runtime.sendMessage({ type: 'add', jobs }, r => { send.textContent = r ? `Collected ${jobs.length} (${r.total} waiting). Open Job Agent to import.` : 'Failed'; console.debug('[Job Agent] via', via); reset(); });
+  };
+  diag.onclick = async () => {
+    const out = S.diagnose(document, location);
+    try { await navigator.clipboard.writeText(out); diag.textContent = 'Copied. Paste it to your developer.'; }
+    catch { const t = Object.assign(document.createElement('textarea'), { value: out }); document.body.append(t); t.select(); document.execCommand('copy'); t.remove(); diag.textContent = 'Copied.'; }
+    reset();
+  };
+  panel.append(send, diag); document.body.append(panel);
+}
