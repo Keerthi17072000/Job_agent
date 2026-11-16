@@ -101,6 +101,19 @@ await test('two profiles on one browser are isolated; switching restores each', 
   await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Hello, Asha');
 });
 
+await test('data saved by an older version of the app loads without errors and is upgraded', async page => {
+  await home(page);
+  await page.evaluate(() => {   // the shapes the first version stored in localStorage
+    localStorage.setItem('ja.profile', JSON.stringify({ name: 'Old User', totalExperienceYears: 4, currentDesignation: 'Dev', previousDesignations: [], skills: { frontend: ['react'], backend: [], frameworks: [], libraries: [], databases: [], cloud: [], aiMl: [], other: [] }, allSkills: ['react'], projects: [], education: [], certifications: [], location: 'Pune', targetRoles: ['Frontend Developer'], summary: '' }));
+    localStorage.setItem('ja.prefs', JSON.stringify({ roles: ['Frontend Developer'], locations: ['Pune'], workModes: [], minScore: 60, blocklist: [], companies: [] }));
+    localStorage.setItem('ja.jobs', JSON.stringify([{ id: 'abc123', fingerprint: 'x', canonicalUrl: 'https://a.co/1', url: 'https://a.co/1', source: 'Remotive', sourceKind: 'portal', title: 'Frontend Developer', company: 'Co', location: 'Remote', workMode: 'remote', expMin: 3, expMax: 5, expLevel: 'Mid (3-5 yrs)', salary: '', summary: 's', description: 'React', requiredSkills: ['react'], matchedSkills: ['react'], missingSkills: [], score: 80, category: 'Strong match', reasons: ['r'], breakdown: { skills: 1, title: 1, experience: 1, responsibilities: 1, location: 1 }, postedAt: '', deadline: '', status: 'new', firstSeen: new Date().toISOString() }]));
+  });
+  await page.reload(); await page.waitForSelector('text=Hello, Old');
+  for (const r of ['overview', 'jobs', 'profile', 'sources', 'settings', 'applications']) { await page.goto(BASE + '#/' + r); await page.waitForTimeout(300); assert.equal(await page.locator('text=Something went wrong').count(), 0, r); assert.doesNotMatch(await page.locator('body').innerText(), /Cannot read properties/); }
+  await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0'); await page.waitForSelector('a:has-text("Frontend Developer")');
+  await page.locator('a.font-extrabold', { hasText: 'Frontend Developer' }).first().click(); await page.waitForSelector('text=Resume suitability');
+});
+
 await test('phone layout has no horizontal overflow; theme toggle works', async page => {
   await page.setViewportSize({ width: 400, height: 800 }); await home(page); await upload(page, file('asha.txt', RESUME_DEV)); await page.waitForSelector('text=Hello, Asha');
   for (const r of ['overview', 'jobs', 'profile', 'sources', 'settings', 'applications']) { await page.goto(BASE + '#/' + r); await page.waitForTimeout(300); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow on ${r}`); }

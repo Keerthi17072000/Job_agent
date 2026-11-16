@@ -23,12 +23,22 @@ export { PORTALS };
 const CACHE_TTL = 6 * 3600e3;
 const DEFAULT_PREFS: Prefs = { roles: [], locations: [], workModes: [], minScore: 60, blocklist: [], companies: [] };
 
+// Data saved by an older version of the app has fewer fields. Fill every field on read so no screen can hit "undefined".
+const readProfile = async () => { const p = await store.get<Profile>('profile'); return p ? normalizeProfile(p) : null; };
+const readPrefs = async (): Promise<Prefs | null> => { const p = await store.get<Prefs>('prefs'); return p ? { ...DEFAULT_PREFS, ...p, roles: p.roles ?? [], locations: p.locations ?? [], workModes: p.workModes ?? [], blocklist: p.blocklist ?? [], companies: p.companies ?? [] } : null; };
+const hydrateJob = (j: Job): Job => ({
+  ...j, externalId: j.externalId ?? '', sources: j.sources?.length ? j.sources : [{ source: j.source, url: j.url }], locationFit: j.locationFit ?? 'unknown', salary: j.salary ?? '', salaryValue: j.salaryValue ?? 0,
+  summary: j.summary ?? '', description: j.description ?? '', requiredSkills: j.requiredSkills ?? [], optionalSkills: j.optionalSkills ?? [], matchedSkills: j.matchedSkills ?? [], missingSkills: j.missingSkills ?? [], missingOptional: j.missingOptional ?? [],
+  reasons: j.reasons ?? [], breakdown: Object.assign({ skills: 0, experience: 0, responsibilities: 0, title: 0, education: 0 }, j.breakdown), postedAt: j.postedAt ?? '', deadline: j.deadline ?? '', status: j.status ?? 'new', firstSeen: j.firstSeen ?? new Date().toISOString(),
+});
+const readJobs = async () => ((await store.get<Job[]>('jobs')) ?? []).map(hydrateJob);
+
 async function need() {
-  const [profile, prefs] = await Promise.all([store.get<Profile>('profile'), store.get<Prefs>('prefs')]);
+  const [profile, prefs] = await Promise.all([readProfile(), readPrefs()]);
   if (!profile || !prefs) throw new Error('Upload a resume first');
   return { profile, prefs };
 }
-const jobsOf = async () => (await store.get<Job[]>('jobs')) ?? [];
+const jobsOf = readJobs;
 const rawOf = (j: Job): RawJob => ({ source: j.source, sourceKind: j.sourceKind, title: j.title, company: j.company, location: j.location, url: j.url, description: j.description, workMode: j.workMode || undefined, salary: j.salary, postedAt: j.postedAt, deadline: j.deadline, externalId: j.externalId, exp: j.expMin == null ? '' : `${j.expMin}${j.expMax != null ? '-' + j.expMax : '+'} years` });
 
 /** Recompute every stored job against the current profile and preferences, keeping the user's own data on each job. */
@@ -46,10 +56,19 @@ async function rescore() {
 const pool = async <T,>(items: T[], n: number, f: (x: T) => Promise<void>) => { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) await f(items[i++]); })); };
 
 export const api = {
-  init: async () => { const slots = await store.initSlots(); return slots; },
+  init: async () => {
+    const slots = await store.initSlots();
+    // one-time upgrade of data saved by an older version: store the complete shapes and recompute scores with the current rules
+    const raw = (await store.get<Job[]>('jobs')) ?? [];
+    if (raw.some(j => !Array.isArray(j.sources) || !j.breakdown || j.breakdown.education === undefined)) {
+      try { const { profile, prefs } = await need(); await store.set('profile', profile); await store.set('prefs', prefs); await rescore(); }
+      catch { await store.set('jobs', await readJobs()); } // no profile to score with: keep the jobs, filled in
+    }
+    return slots;
+  },
 
   state: async (): Promise<State> => {
-    const [slots, profile, prefs, jobs, runs, logs, lastSearch] = await Promise.all([store.slots(), store.get<Profile>('profile'), store.get<Prefs>('prefs'), store.get<Job[]>('jobs'), store.get<Run[]>('runs'), store.get<LogEntry[]>('logs'), store.get<string>('lastSearch')]);
+    const [slots, profile, prefs, jobs, runs, logs, lastSearch] = await Promise.all([store.slots(), readProfile(), readPrefs(), readJobs(), store.get<Run[]>('runs'), store.get<LogEntry[]>('logs'), store.get<string>('lastSearch')]);
     const slot = slots.find(s => s.id === store.slotId()) ?? slots[0];
     return { slot, slots, profile: profile ?? null, prefs: prefs ?? null, jobs: (jobs ?? []).sort((a, b) => b.score - a.score || b.firstSeen.localeCompare(a.firstSeen)), runs: runs ?? [], logs: logs ?? [], lastSearch: lastSearch ?? '',
       queries: profile && prefs ? buildQueries(profile, prefs) : [] };
@@ -59,7 +78,7 @@ export const api = {
   resume: async (f: File) => {
     await checkResume(f);
     const text = await fileText(f);
-    const old = await store.get<Prefs>('prefs');
+    const old = await readPrefs();
     let profile: Profile, note = '';
     if (old?.aiKey && old.aiProvider) {
       try { profile = await makeAi(old.aiProvider, old.aiKey).extractProfile(text); }
