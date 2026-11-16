@@ -18,7 +18,7 @@ const btn = Object.assign(document.createElement('button'), { textContent: 'Send
 btn.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:99999;padding:10px 14px;background:#0f6e6e;color:#fff;border:0;border-radius:6px;font:600 14px system-ui;cursor:pointer';
 btn.onclick = () => {
   const jobs = [...document.querySelectorAll(SITES.card)].map(e => ({ ...SITES.read(e), source: SITES.source })).filter(j => j.title && j.url);
-  btn.textContent = 'Sending…';
-  chrome.runtime.sendMessage(jobs, r => { btn.textContent = r?.error ? `Failed: ${r.error}` : `Sent ${r.received}, kept ${r.added}`; setTimeout(() => btn.textContent = 'Send to Job Agent', 4000); });
+  btn.textContent = 'Collecting…';
+  chrome.runtime.sendMessage({ type: 'add', jobs }, r => { btn.textContent = r ? `Collected ${r.received} (${r.total} waiting). Now click Import in Job Agent.` : 'Failed'; setTimeout(() => btn.textContent = 'Send to Job Agent', 5000); });
 };
 document.body.append(btn);

@@ -60,7 +60,7 @@ export const careerPages: Adapter = {
     let reached = 0;
     await Promise.all(q.companies.map(async c => {
       try { const all = await board(c, q); reached++; jobs.push(...all.filter(j => titleRelevant(j.title, q.roles))); }
-      catch (e) { failed.push(`${c.ats}:${c.token} (${(e as Error).message})`); }
+      catch (e) { const m = (e as Error).message; failed.push(`${c.ats}:${c.token} (${/fetch/i.test(m) ? 'unreachable, or blocked by the browser (CORS)' : m})`); }
     }));
     const note = failed.length ? ` Failed: ${failed.join(', ')}.` : '';
     if (!reached) return { ...base, status: 'error', reason: `No board could be read.${note}`, jobs };

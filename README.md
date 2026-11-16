@@ -1,27 +1,28 @@
 # Job Agent
 
-Local job-search agent: resume in, ranked jobs out. Everything stays on your machine in `jobs.db`. Resume parsing is free and offline. No API key is needed.
+Resume in, ranked jobs out. Runs entirely in your browser: **https://keerthi17072000.github.io/Job_agent/**
 
-```bash
-npm install && npx playwright install chromium && npm run build
-npm start      # http://127.0.0.1:3000
-# optional, paid, more accurate resume parsing: set ANTHROPIC_API_KEY first
-npm test
-```
+Your resume and jobs are stored in your own browser (localStorage) and never uploaded. No API key, no server, no cost.
 
-1. Upload a PDF/DOCX/TXT resume. Check the extracted profile and the Search preferences it pre-fills.
-2. Under "Company career pages" add boards, e.g. `greenhouse:stripe`, `lever:palantir`, `ashby:ashby`, `smartrecruiters:<companyId>`. The token is the last part of the company's job board URL.
-3. Click **Search jobs**. The Job sources panel shows, per source, whether it was read, blocked, manual or errored. Nothing is skipped silently.
-4. Portals that forbid automation or sit behind login/bot protection (Naukri, LinkedIn, Indeed, Glassdoor, Wellfound, Instahyre, Cutshort) are never opened by the server. Load `extension/` in Chrome (chrome://extensions, Developer mode, Load unpacked), open the portal's job list in your own logged-in tab and click **Send to Job Agent**.
+## Use it
+1. Upload a PDF, DOCX or TXT resume. A free rule-based parser extracts skills, experience, designations, location and education. Check the result and edit target roles under Search preferences.
+2. Under "Company career pages" add boards, e.g. `greenhouse:stripe`, `lever:palantir`, `ashby:ashby`, `smartrecruiters:<companyId>` (the token is the last part of the company's job board URL). Click **Search jobs**. The Job sources panel shows whether each source was read or failed.
+3. For Naukri and LinkedIn (which forbid automation) install the extension: `chrome://extensions`, Developer mode, Load unpacked, pick `extension/`. Open the portal's job list in your own logged-in tab, click **Send to Job Agent**, then click **Import from extension** in the app.
 
 ## Rules the code enforces
 - Every stored job has a source and an https original URL, or it is rejected and counted.
-- No mock data. Test fixtures live only in `server/server.test.ts` and in-memory DBs.
-- Playwright adapters (Hirist, iimjobs, Foundit, Shine) check robots.txt, stop on login walls/CAPTCHA/HTTP errors, and never try to get past them.
+- No mock data. Test inputs live only in `engine/engine.test.ts`.
 - Duplicates: same company+title+location, or same canonical URL.
+- The app never opens or scrapes portals itself.
 
-## Not verified yet
-Nothing has run against a live site. Portal policies, search URLs, extension selectors and the SmartRecruiters field names come from documentation and memory. Workday and Indeed/Glassdoor/Wellfound-style auto-search are not implemented.
+## Develop
+```bash
+npm install && npm test && npm run dev    # http://localhost:5173
+```
+`engine/` is the shared logic (parser, matcher, dedupe, career-page mappers); `web/` is the React app; `extension/` is the Chrome extension. The extension is allow-listed for this site's URL and `http://127.0.0.1:5173/`; edit `extension/manifest.json` if you host it elsewhere.
 
-## Site
-`site/` is a static roadmap page published with GitHub Pages (`.github/workflows/pages.yml`). The app itself cannot run on Pages: it needs the Node server, SQLite and a local browser.
+## Not verified / not built
+- Career-page search is verified live for Greenhouse and Lever only (one board each). Ashby and SmartRecruiters field mappings are from documentation.
+- Naukri and LinkedIn selectors in the extension are unverified; the extension collects list cards only, so those jobs lack descriptions and score weakly.
+- Hirist, iimjobs, Foundit, Shine, Indeed, Glassdoor, Wellfound, Instahyre, Cutshort have no extension support yet. Workday is not supported.
+- Resume parsing is rule-based: about 100 known technologies, no project extraction. Storage is capped (2000 characters of description per job).

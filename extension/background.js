@@ -1,6 +1,8 @@
-// Content scripts can't call localhost across origins; the service worker can (host_permissions).
-chrome.runtime.onMessage.addListener((jobs, _s, reply) => {
-  fetch('http://127.0.0.1:3000/api/ingest', { method: 'POST', body: JSON.stringify(jobs) })
-    .then(r => r.json()).then(reply).catch(e => reply({ error: e.message }));
+// Listings wait in extension storage until the Job Agent page asks for them.
+chrome.runtime.onMessage.addListener((msg, _s, reply) => {
+  chrome.storage.local.get({ pending: [] }).then(({ pending }) => {
+    if (msg.type === 'add') { chrome.storage.local.set({ pending: pending.concat(msg.jobs) }); reply({ received: msg.jobs.length, total: pending.length + msg.jobs.length }); }
+    else if (msg.type === 'take') { chrome.storage.local.set({ pending: [] }); reply({ jobs: pending }); }
+  });
   return true;
 });

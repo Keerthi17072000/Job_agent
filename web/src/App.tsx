@@ -66,7 +66,7 @@ export default function App() {
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(true); setMsg(label);
-    try { await fn(); setMsg(''); await load(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+    try { await fn(); setMsg(m => m === label ? '' : m); await load(); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   const savePrefs = () => prefs && api.prefs(prefs);
 
@@ -85,7 +85,7 @@ export default function App() {
 
   if (!st) return <p className="p-6">{msg || 'Loading…'}</p>;
   return <main className="mx-auto max-w-6xl space-y-6 px-4 py-6">
-    <header><h1 className="text-2xl font-semibold">Job Agent</h1><p className="text-sm text-zinc-500">Runs on your machine. Resume parsing is free and local; if you set an Anthropic API key, the resume text is sent to Claude for better accuracy.</p></header>
+    <header><h1 className="text-2xl font-semibold">Job Agent <a href="roadmap.html" className="ml-2 text-sm font-normal text-teal-700 underline dark:text-teal-400">Roadmap</a></h1><p className="text-sm text-zinc-500">Runs entirely in your browser. Your resume and jobs stay in this browser and are never uploaded.</p></header>
 
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
@@ -113,7 +113,8 @@ export default function App() {
     </Card>}
 
     <section aria-label="Portal status" className="space-y-2"><h2 className="font-semibold">Job sources</h2>
-      <p className="text-sm text-zinc-500">Portals that restrict automation are never opened by the server. Use the browser extension on those pages (see README).</p>
+      <p className="flex flex-wrap items-center gap-3 text-sm text-zinc-500">Portals that restrict automation are never opened by this app. Install the browser extension, click “Send to Job Agent” on a portal's job list, then import here.
+        <Button variant="outline" disabled={busy || !st.profile} onClick={() => run('Importing…', async () => { const r = await api.importExtension(); setMsg(`Imported ${r.received}: ${r.added} added, ${r.duplicate} duplicates, ${r.received - r.added - r.duplicate} rejected (no verifiable https link)`); })}>Import from extension</Button></p>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{st.portals.map(p => {
         const run = st.runs.find(r => r.adapter === p.id), live = results.find(r => r.name === p.name);
         const status = live?.status ?? run?.status ?? (p.policy === 'manual' ? 'manual' : 'none'), a = ACCESS[status] ?? ACCESS.none;
@@ -147,7 +148,7 @@ export default function App() {
         <Select aria-label="Status" value={f.status} onChange={e => set('status', e.target.value)}><option value="">All statuses</option>{st.statuses.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</Select>
         <label className="flex h-9 items-center gap-2 text-sm"><input type="checkbox" checked={f.salary} onChange={e => set('salary', e.target.checked)} />Salary listed</label>
       </Card>
-      {jobs.length === 0 && <Card><p className="text-sm text-zinc-500">No jobs yet. Upload a resume and click Search jobs. Jobs from portals marked “Manual” appear after you send them from the browser extension.</p></Card>}
+      {jobs.length === 0 && <Card><p className="text-sm text-zinc-500">No jobs yet. Upload a resume and click Search jobs. Add company career pages above, or import listings from the browser extension.</p></Card>}
       <div className="grid gap-3 lg:grid-cols-2">{shown.map(j => <JobCard key={j.id} job={j} statuses={st.statuses} onStatus={(id, s) => api.status(id, s).then(load)} />)}</div>
     </section>
   </main>;

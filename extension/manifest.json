@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Job Agent",
-  "version": "0.1",
-  "description": "Sends the job listings you are viewing to your local Job Agent.",
-  "host_permissions": ["http://127.0.0.1:3000/*"],
+  "version": "0.2",
+  "description": "Collects the job listings you are viewing and hands them to your Job Agent page.",
+  "permissions": ["storage"],
   "background": { "service_worker": "background.js" },
-  "content_scripts": [{
-    "matches": ["https://www.naukri.com/*", "https://www.linkedin.com/jobs/*"],
-    "js": ["content.js"]
-  }]
+  "content_scripts": [
+    { "matches": ["https://www.naukri.com/*", "https://www.linkedin.com/jobs/*"], "js": ["content.js"] },
+    { "matches": ["https://keerthi17072000.github.io/Job_agent/*", "http://127.0.0.1:5173/*"], "js": ["bridge.js"] }
+  ]
 }
