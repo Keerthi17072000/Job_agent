@@ -5,18 +5,22 @@ export interface Job {
 }
 export interface Profile { name: string; totalExperienceYears: number; currentDesignation: string; allSkills: string[]; location: string; targetRoles: string[]; summary: string }
 export interface Company { ats: string; token: string; name?: string }
-export interface Prefs { roles: string[]; locations: string[]; workModes: string[]; minScore: number; blocklist: string[]; companies: Company[] }
-export interface PortalInfo { id: string; name: string; policy: 'manual' | 'checked'; note: string }
+export interface Prefs { roles: string[]; locations: string[]; workModes: string[]; minScore: number; blocklist: string[]; companies: Company[]; adzuna?: { id: string; key: string } }
+export interface PortalInfo { id: string; name: string; note: string; extension: boolean }
+export interface SourceInfo { id: string; name: string; note: string }
 export interface Run { adapter: string; name: string; status: string; reason: string; found: number; checked_at: string }
-export interface State { profile: Profile | null; prefs: Prefs | null; jobs: Job[]; statuses: string[]; portals: PortalInfo[]; runs: Run[] }
+export interface State { profile: Profile | null; prefs: Prefs | null; jobs: Job[]; statuses: string[]; portals: PortalInfo[]; sources: SourceInfo[]; runs: Run[] }
 
 import { careerPages } from '../../engine/adapters/ats.ts';
+import { apiSources } from '../../engine/adapters/apis.ts';
 import { PORTALS, portalName } from '../../engine/adapters/portalList.ts';
 import { ingest } from '../../engine/pipeline.ts';
 import { parseLocal } from '../../engine/localResume.ts';
 import { STATUSES } from '../../engine/types.ts';
 import type { Job as EJob, Prefs as EPrefs, Profile as EProfile, RawJob } from '../../engine/types.ts';
 import { fileText } from './resumeFile.ts';
+
+const SOURCES = [careerPages, ...apiSources];
 
 // Everything runs in the browser. Data lives in this browser's localStorage and never leaves it,
 // except the public job-board requests for the companies you list.
@@ -35,23 +39,29 @@ export const api = {
   state: async (): Promise<State> => ({
     profile: read('profile', null), prefs: read('prefs', null),
     jobs: read<EJob[]>('jobs', []).sort((a, b) => b.score - a.score || b.firstSeen.localeCompare(a.firstSeen)),
-    statuses: STATUSES, portals: PORTALS.map(p => ({ ...p, policy: 'manual' as const })), runs: read<Run[]>('runs', []),
+    statuses: STATUSES, portals: PORTALS, sources: SOURCES.map(({ id, name, note }) => ({ id, name, note })), runs: read<Run[]>('runs', []),
   }),
   resume: async (f: File) => {
     const profile = parseLocal(await fileText(f));
     write('profile', profile);
-    if (!read('prefs', null)) write('prefs', { roles: profile.targetRoles, locations: profile.location ? [profile.location] : [], workModes: [], minScore: 60, blocklist: [], companies: [] } satisfies EPrefs);
+    const old = read<EPrefs | null>('prefs', null);
+    write('prefs', {
+      workModes: [], minScore: 60, blocklist: [], companies: [], ...old,
+      roles: old?.roles.length ? old.roles : profile.targetRoles,
+      locations: old?.locations.length ? old.locations : profile.location ? [profile.location] : [],
+    } satisfies EPrefs);
   },
   prefs: async (p: Prefs) => write('prefs', p),
   search: async () => {
     const { profile, prefs } = needProfile();
-    const r = await careerPages.search({ roles: prefs.roles, locations: prefs.locations, companies: prefs.companies as EPrefs['companies'] });
+    const query = { roles: prefs.roles, locations: prefs.locations, companies: prefs.companies as EPrefs['companies'], adzuna: prefs.adzuna };
+    const found = await Promise.all(SOURCES.map(a => a.search(query))); // each adapter reports its own failure
     const jobs = read<EJob[]>('jobs', []);
-    const counts = ingest(r.jobs, profile, prefs, jobs);
+    const checked_at = new Date().toISOString();
+    const results = found.map(r => ({ adapter: r.adapter, name: r.name, status: r.status, reason: r.reason, found: r.jobs.length, checked_at, ...ingest(r.jobs, profile, prefs, jobs) }));
     write('jobs', jobs);
-    const run: Run = { adapter: r.adapter, name: r.name, status: r.status, reason: r.reason, found: r.jobs.length, checked_at: new Date().toISOString() };
-    write('runs', [run]);
-    return { results: [{ ...run, ...counts }] };
+    write('runs', results.map(({ adapter, name, status, reason, found, checked_at }) => ({ adapter, name, status, reason, found, checked_at })));
+    return { results };
   },
   status: async (id: string, s: string) => { write('jobs', read<EJob[]>('jobs', []).map(j => j.id === id ? { ...j, status: s as EJob['status'] } : j)); },
   /** Pull listings the browser extension collected from portal pages you viewed. */

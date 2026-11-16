@@ -5,9 +5,12 @@ Resume in, ranked jobs out. Runs entirely in your browser: **https://keerthi1707
 Your resume and jobs are stored in your own browser (localStorage) and never uploaded. No API key, no server, no cost.
 
 ## Use it
-1. Upload a PDF, DOCX or TXT resume. A free rule-based parser extracts skills, experience, designations, location and education. Check the result and edit target roles under Search preferences.
-2. Under "Company career pages" add boards, e.g. `greenhouse:stripe`, `lever:palantir`, `ashby:ashby`, `smartrecruiters:<companyId>` (the token is the last part of the company's job board URL). Click **Search jobs**. The Job sources panel shows whether each source was read or failed.
-3. For Naukri and LinkedIn (which forbid automation) install the extension: `chrome://extensions`, Developer mode, Load unpacked, pick `extension/`. Open the portal's job list in your own logged-in tab, click **Send to Job Agent**, then click **Import from extension** in the app.
+1. Upload a PDF, DOCX or TXT resume. A free rule-based parser extracts skills, experience, designations, location and education. Check the result and edit your target roles under Preferences.
+2. Click **Search jobs**. It searches several sources at once and the Sources panel shows, per source, whether it was read or why it failed:
+   - Company career pages: Greenhouse, Lever, Ashby and SmartRecruiters boards. Add them as `ats:token` lines (e.g. `greenhouse:stripe`, `lever:cred`) or click "Fill with example boards".
+   - Public job-board APIs: Remotive, Jobicy, Arbeitnow, RemoteOK (remote and international roles).
+   - Adzuna India: optional, needs your own free key from developer.adzuna.com (Preferences).
+3. Naukri and LinkedIn forbid automated reading, so the app never opens them. Install the extension (`chrome://extensions`, Developer mode, Load unpacked, pick `extension/`), click **Send to Job Agent** on a job list in your own logged-in tab, then click **Import from extension** in the app.
 
 ## Rules the code enforces
 - Every stored job has a source and an https original URL, or it is rejected and counted.
@@ -22,7 +25,8 @@ npm install && npm test && npm run dev    # http://localhost:5173
 `engine/` is the shared logic (parser, matcher, dedupe, career-page mappers); `web/` is the React app; `extension/` is the Chrome extension. The extension is allow-listed for this site's URL and `http://127.0.0.1:5173/`; edit `extension/manifest.json` if you host it elsewhere.
 
 ## Not verified / not built
-- Career-page search is verified live for Greenhouse and Lever only (one board each). Ashby and SmartRecruiters field mappings are from documentation.
+- Verified live from a browser: Greenhouse, Lever, Ashby, SmartRecruiters, Remotive, Jobicy, Arbeitnow and RemoteOK (CORS and response shape). Adzuna is from its documentation only.
+- Most free APIs list remote or international jobs. For Indian listings use Adzuna or the extension.
 - Naukri and LinkedIn selectors in the extension are unverified; the extension collects list cards only, so those jobs lack descriptions and score weakly.
-- Hirist, iimjobs, Foundit, Shine, Indeed, Glassdoor, Wellfound, Instahyre, Cutshort have no extension support yet. Workday is not supported.
+- Hirist, iimjobs, Foundit, Shine, Indeed, Glassdoor, Wellfound, Instahyre, Cutshort have no extension support yet. Workday and The Muse (blocks browser requests) are not supported.
 - Resume parsing is rule-based: about 100 known technologies, no project extraction. Storage is capped (2000 characters of description per job).

@@ -21,12 +21,13 @@ export interface Profile {
 }
 
 export interface Company { ats: 'greenhouse' | 'lever' | 'ashby' | 'smartrecruiters'; token: string; name?: string }
-export interface Prefs { roles: string[]; locations: string[]; workModes: WorkMode[]; minScore: number; blocklist: string[]; companies: Company[] }
-export interface Query { roles: string[]; locations: string[]; companies: Company[] }
+export interface Adzuna { id: string; key: string }
+export interface Prefs { roles: string[]; locations: string[]; workModes: WorkMode[]; minScore: number; blocklist: string[]; companies: Company[]; adzuna?: Adzuna }
+export interface Query { roles: string[]; locations: string[]; companies: Company[]; adzuna?: Adzuna }
 
 export type Access = 'ok' | 'blocked' | 'manual' | 'error' | 'not_configured';
 export interface AdapterResult { adapter: string; name: string; status: Access; reason: string; jobs: RawJob[] }
-export interface Adapter { id: string; name: string; search(q: Query): Promise<AdapterResult> }
+export interface Adapter { id: string; name: string; note: string; search(q: Query): Promise<AdapterResult> }
 
 export interface Breakdown { skills: number; title: number; experience: number; responsibilities: number; location: number }
 export interface Job {

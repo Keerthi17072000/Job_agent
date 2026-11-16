@@ -4,13 +4,13 @@
 import { htmlToText } from '../text.ts';
 import type { Adapter, AdapterResult, Company, Query, RawJob } from '../types.ts';
 
-const getJson = async (url: string) => {
+export const getJson = async (url: string) => {
   const r = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json() as Promise<any>;
 };
-const nameOf = (c: Company) => c.name ?? c.token;
-const iso = (v: unknown) => { const d = new Date(v as string); return isNaN(+d) ? '' : d.toISOString(); };
+export const nameOf = (c: Company) => c.name ?? c.token;
+export const iso = (v: unknown) => { const d = new Date(v as string); return isNaN(+d) ? '' : d.toISOString(); };
 
 export const mapGreenhouse = (json: any, c: Company): RawJob[] => (json.jobs ?? []).map((j: any) => ({
   source: 'Greenhouse', sourceKind: 'career' as const, title: j.title, company: nameOf(c), location: j.location?.name ?? '',
@@ -52,7 +52,7 @@ async function board(c: Company, q: Query): Promise<RawJob[]> {
 }
 
 export const careerPages: Adapter = {
-  id: 'career-pages', name: 'Company career pages (Greenhouse, Lever, Ashby, SmartRecruiters)',
+  id: 'career-pages', name: 'Company career pages', note: 'Greenhouse, Lever, Ashby and SmartRecruiters boards you list in Preferences. Workday is not supported.',
   async search(q): Promise<AdapterResult> {
     const base = { adapter: this.id, name: this.name };
     if (!q.companies.length) return { ...base, status: 'not_configured', reason: 'No companies configured. Add Greenhouse/Lever/Ashby/SmartRecruiters board tokens in Preferences.', jobs: [] };

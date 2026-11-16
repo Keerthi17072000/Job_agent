@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 const { match, category, parseExp, expLevel } = await import('./match.ts');
 const { canonicalUrl, htmlToText } = await import('./text.ts');
 const { toJob, ingest } = await import('./pipeline.ts');
+const { mapRemotive, mapJobicy, mapArbeitnow, mapRemoteOk, mapAdzuna, apiSources } = await import('./adapters/apis.ts');
 const { mapGreenhouse, mapLever, mapAshby, mapSmartRecruiters, titleRelevant } = await import('./adapters/ats.ts');
 const { parseLocal } = await import('./localResume.ts');
 
@@ -71,4 +72,22 @@ test('free local resume parser extracts only what the text contains', () => {
   assert.deepEqual([...p.allSkills].sort(), ['aws', 'node.js', 'postgresql', 'react', 'typescript']);
   assert.ok(!p.allSkills.includes('python')); // nothing invented
   assert.deepEqual(p.certifications, ['AWS Cloud Practitioner']);
+});
+
+test('public job-board API mappers (inputs shaped like the live responses)', () => {
+  const r = mapRemotive({ jobs: [{ url: 'https://remotive.com/j/1', title: 'React Dev', company_name: 'Co', candidate_required_location: 'Worldwide', publication_date: '2026-01-01T00:00:00', description: '<p>x</p>', salary: '$50k' }] })[0];
+  assert.equal(r.workMode, 'remote'); assert.equal(r.location, 'Worldwide'); assert.equal(r.salary, '$50k');
+  const j = mapJobicy({ jobs: [{ url: 'https://jobicy.com/j/1', jobTitle: 'FE', companyName: 'Co', jobGeo: ['USA', 'Canada'], pubDate: '2026-01-01 10:00:00', jobDescription: 'd', salaryMin: 10, salaryMax: 20, salaryCurrency: 'USD' }] })[0];
+  assert.equal(j.location, 'USA, Canada'); assert.equal(j.salary, 'USD 10-20');
+  const a = mapArbeitnow({ data: [{ url: 'https://arbeitnow.com/j/1', title: 'BE', company_name: 'Co', location: 'Berlin', remote: false, created_at: 1700000000, description: 'd' }] })[0];
+  assert.ok(a.postedAt!.startsWith('2023')); assert.equal(a.workMode, undefined);
+  const ro = mapRemoteOk([{ legal: 'notice' }, { url: 'https://remoteok.com/j/1', position: 'SRE', company: 'Co', date: '2026-01-01T00:00:00+00:00', salary_min: 1, salary_max: 2, description: 'd' }]);
+  assert.equal(ro.length, 1); assert.equal(ro[0].salary, 'USD 1-2');
+  assert.equal(mapAdzuna({ results: [{ title: 'T', company: { display_name: 'Co' }, location: { display_name: 'Pune' }, redirect_url: 'https://adzuna.in/x', created: '2026-01-01T00:00:00Z' }] })[0].location, 'Pune');
+});
+test('sources report a clear reason instead of silently returning nothing', async () => {
+  const q = { roles: [], locations: [], companies: [] };
+  for (const a of apiSources) assert.equal((await a.search(q)).status, 'not_configured');
+  const adz = apiSources.find(a => a.id === 'adzuna')!;
+  assert.match((await adz.search({ ...q, roles: ['x'] })).reason, /Adzuna/);
 });

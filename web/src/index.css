@@ -1,2 +1,22 @@
 @import "tailwindcss";
-body { @apply bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100; font-family: Inter, system-ui, sans-serif; }
+
+@theme {
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-display: "Space Grotesk", Inter, system-ui, sans-serif;
+  --color-canvas: #f3f5f9; --color-card: #ffffff; --color-sunk: #edf0f6; --color-line: #dfe4ee;
+  --color-ink: #111827; --color-mute: #5b6577;
+  --color-brand: #2552e6; --color-brand-soft: #e5ecff; --color-brand-ink: #1b3db8;
+  --color-good: #0b7a54; --color-good-soft: #d9f4e8; --color-warn: #955300; --color-warn-soft: #fcebc8; --color-bad: #b0251b; --color-bad-soft: #fde3e0;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #0c0f16; --color-card: #151a24; --color-sunk: #1d2430; --color-line: #2a3342;
+    --color-ink: #e8ecf3; --color-mute: #9aa5b8;
+    --color-brand: #6f93ff; --color-brand-soft: #1b2748; --color-brand-ink: #a9bfff;
+    --color-good: #5fd6a4; --color-good-soft: #123325; --color-warn: #f2bd62; --color-warn-soft: #382a0e; --color-bad: #ff9088; --color-bad-soft: #3a1815;
+  }
+}
+:root { color-scheme: light dark; }
+body { @apply bg-canvas text-ink font-sans antialiased; }
+h1, h2, h3 { font-family: var(--font-display); }
+:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
