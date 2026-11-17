@@ -40,7 +40,8 @@ const distinctive = (role: string) => { const w = words(role), d = w.filter(x =>
 /** Cheap pre-filter so we do not score a whole company board: the title must contain a distinctive word of a target role or query (e.g. "frontend" or "nurse", not just "engineer"). */
 export const titleRelevant = (title: string, roles: string[]) => { const t = new Set(words(title)); return roles.some(r => distinctive(r).some(w => t.has(w))); };
 
-async function board(c: Company, q: Query, ctx: SearchCtx): Promise<RawJob[]> {
+/** One company's openings. `all` skips the title filter that keeps SmartRecruiters detail calls few (used by company lookup, which wants every opening, capped at 40). */
+export async function board(c: Company, q: Query, ctx: SearchCtx, all = false): Promise<RawJob[]> {
   const t = encodeURIComponent(c.token), g = (u: string) => getJson(u, { ...ctx, source: `${c.ats}:${c.token}` });
   if (c.ats === 'greenhouse') return mapGreenhouse(await g(`https://boards-api.greenhouse.io/v1/boards/${t}/jobs?content=true`), c);
   if (c.ats === 'lever') return mapLever(await g(`https://api.lever.co/v0/postings/${t}?mode=json`), c);
@@ -48,7 +49,7 @@ async function board(c: Company, q: Query, ctx: SearchCtx): Promise<RawJob[]> {
   const roles = [...q.roles, ...q.queries];
   const list = (await g(`https://api.smartrecruiters.com/v1/companies/${t}/postings?limit=100`)).content ?? [];
   const out: RawJob[] = [];
-  for (const p of list.filter((p: any) => titleRelevant(p.name, roles)).slice(0, 40)) // detail call per posting: capped
+  for (const p of list.filter((p: any) => all || titleRelevant(p.name, roles)).slice(0, 40)) // detail call per posting: capped
     out.push(mapSmartRecruiters(p, await g(`https://api.smartrecruiters.com/v1/companies/${t}/postings/${p.id}`), c));
   return out;
 }

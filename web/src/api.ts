@@ -5,11 +5,12 @@ import { makeAi } from '../../engine/ai.ts';
 import { defaultRegion, regionFromPhone } from '../../engine/region.ts';
 import { parseLocal } from '../../engine/localResume.ts';
 import { resumeCorpus } from '../../engine/match.ts';
-import { ingest, toJob } from '../../engine/pipeline.ts';
+import { findCompanyBoards } from '../../engine/adapters/discover.ts';
+import { addJob, ingest, toJob } from '../../engine/pipeline.ts';
 import { normalizeProfile } from '../../engine/profile.ts';
 import { buildQueries } from '../../engine/queries.ts';
 import { STATUSES } from '../../engine/types.ts';
-import type { AdapterResult, Job, LogEntry, Prefs, Profile, Query, RawJob, Status } from '../../engine/types.ts';
+import type { AdapterResult, Company, Job, LogEntry, Prefs, Profile, Query, RawJob, Status } from '../../engine/types.ts';
 import { boardsFor } from './boards.ts';
 import { dot, embed } from './embed.ts';
 import { checkResume, fileText } from './resumeFile.ts';
@@ -212,6 +213,15 @@ export const api = {
     c.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 320, 320);
     await store.set('photo', c.toDataURL('image/jpeg', 0.86));
   },
+
+  /** Every opening of one company, found by trying its likely public job-board names. Scored against your resume but not stored until you save them. */
+  lookupCompany: async (name: string) => {
+    const { profile, prefs } = await need();
+    return (await findCompanyBoards(name)).map(f => ({ label: f.label, company: f.company,
+      jobs: f.jobs.map(raw => toJob(raw, profile, prefs)).filter((j): j is Job => typeof j === 'object').sort((a, b) => b.score - a.score) }));
+  },
+  addCompany: async (c: Company) => { const { prefs } = await need(); if (!prefs.companies.some(x => x.ats === c.ats && x.token === c.token)) await store.set('prefs', { ...prefs, companies: [...prefs.companies, c] }); },
+  saveJobs: async (found: Job[]) => { const jobs = await jobsOf(); let added = 0; for (const j of found) if (addJob(jobs, j) === 'added') added++; await store.set('jobs', jobs); return added; },
 
   updateJob: async (id: string, patch: Partial<Pick<Job, 'status' | 'saved' | 'notes'>>) => {
     const jobs = await jobsOf();

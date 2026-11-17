@@ -371,3 +371,21 @@ test('region from a phone number when the resume names no place', () => {
   assert.equal(regionFromPhone('+44 7700 900123'), 'United Kingdom'); assert.equal(regionFromPhone('+1 415 555 0100'), 'United States'); assert.equal(regionFromPhone('+49 30 1234567'), 'Germany');
   assert.equal(regionFromPhone(''), ''); assert.equal(regionFromPhone('12345'), '');
 });
+
+// ---- company lookup ----
+const { boardNames, findCompanyBoards } = await import('./adapters/discover.ts');
+test('board names are guessed from a company name, few and without legal suffixes', () => {
+  assert.deepEqual(boardNames('Cred'), ['cred']); assert.deepEqual(boardNames('Cred Club Pvt Ltd'), ['credclub', 'cred-club', 'cred']);
+  assert.ok(boardNames('Tata Consultancy Services').includes('tcs')); assert.ok(!boardNames('Cred Club Pvt Ltd').some(n => /pvt/.test(n)));
+  assert.ok(boardNames('Zoho Corporation').includes('zoho')); assert.ok(boardNames('x').length === 0 && boardNames('').length === 0); assert.ok(boardNames('A very long company name indeed here').length <= 6);
+});
+test('company lookup returns only boards that exist and have openings, and reports none cleanly', async () => {
+  const real = globalThis.fetch; const hits: string[] = [];
+  globalThis.fetch = (async (u: string) => { hits.push(u); return /api\.lever\.co\/v0\/postings\/testco/.test(u) ? new Response(JSON.stringify([{ id: '1', text: 'Engineer', hostedUrl: 'https://jobs.lever.co/testco/1', categories: { location: 'Pune' }, descriptionPlain: 'x' }]), { status: 200 })
+    : /greenhouse.*\/testco\//.test(u) ? new Response(JSON.stringify({ jobs: [] }), { status: 200 }) : new Response('nope', { status: 404 }); }) as any;
+  try {
+    const f = await findCompanyBoards('TestCo'); assert.deepEqual(f.map(x => x.label), ['lever:testco']); assert.equal(f[0].jobs[0].url, 'https://jobs.lever.co/testco/1'); assert.equal(f[0].company.name, 'TestCo');
+    assert.ok(hits.every(u => /greenhouse|lever|ashbyhq|smartrecruiters/.test(u)) && hits.length <= 24);
+    assert.deepEqual(await findCompanyBoards('Nonexistent Co'), []);
+  } finally { globalThis.fetch = real; }
+});

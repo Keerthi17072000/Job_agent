@@ -10,9 +10,10 @@ import ProfileView from './views/ProfileView.tsx';
 import SourcesView from './views/SourcesView.tsx';
 import SettingsView from './views/SettingsView.tsx';
 import ResumeView from './views/ResumeView.tsx';
+import CompanyView from './views/CompanyView.tsx';
 
-const NAV: [string, string, keyof typeof ICONS][] = [['overview', 'Overview', 'overview'], ['jobs', 'Jobs', 'jobs'], ['saved', 'Saved', 'saved'], ['applications', 'Applications', 'applications'], ['resume', 'Resume and ATS score', 'resume'], ['profile', 'Profile', 'profile'], ['sources', 'Sources', 'sources'], ['settings', 'Settings', 'settings']];
-const TITLES: Record<string, string> = { overview: 'Overview', jobs: 'Jobs', saved: 'Saved jobs', applications: 'Applications', resume: 'Resume and ATS score', profile: 'Profile', sources: 'Sources', settings: 'Settings', job: 'Job details' };
+const NAV: [string, string, keyof typeof ICONS][] = [['overview', 'Overview', 'overview'], ['jobs', 'Jobs', 'jobs'], ['saved', 'Saved', 'saved'], ['applications', 'Applications', 'applications'], ['company', 'Company lookup', 'company'], ['resume', 'Resume and ATS score', 'resume'], ['profile', 'Profile', 'profile'], ['sources', 'Sources', 'sources'], ['settings', 'Settings', 'settings']];
+const TITLES: Record<string, string> = { overview: 'Overview', jobs: 'Jobs', saved: 'Saved jobs', applications: 'Applications', company: 'Company lookup', resume: 'Resume and ATS score', profile: 'Profile', sources: 'Sources', settings: 'Settings', job: 'Job details' };
 
 function useTheme() {
   const [t, setT] = useState<string | null>(() => { try { return localStorage.getItem('ja.theme'); } catch { return null; } });
@@ -51,7 +52,7 @@ function Shell() {
       </header>
       <main className="mx-auto max-w-[1500px]" key={route + param}>
         {!st ? <div className="grid gap-4 md:grid-cols-2"><div className="skel h-40" /><div className="skel h-40" /></div>
-          : route === 'jobs' ? <JobsView /> : route === 'saved' ? <JobsView savedOnly /> : route === 'job' ? <JobDetail id={param} /> : route === 'applications' ? <ApplicationsView /> : route === 'resume' ? <ResumeView />
+          : route === 'jobs' ? <JobsView /> : route === 'saved' ? <JobsView savedOnly /> : route === 'job' ? <JobDetail id={param} /> : route === 'applications' ? <ApplicationsView /> : route === 'resume' ? <ResumeView /> : route === 'company' ? <CompanyView />
           : route === 'profile' ? <ProfileView /> : route === 'sources' ? <SourcesView /> : route === 'settings' ? <SettingsView dark={dark} toggleTheme={toggleTheme} /> : <Overview />}
       </main>
     </div>

@@ -25,6 +25,7 @@ async function mockSources(page, { nurse = false } = {}) {
   await page.route(/arbeitnow\.com/, r => r.fulfill(json({ links: {}, data: nurse ? [] : [{ slug: 'fe-x', title: 'Frontend Developer', company_name: 'RemoCo', location: 'Remote', remote: true, url: 'https://www.arbeitnow.com/jobs/fe-x', description: JD, created_at: 1762700000 }] })));
   await page.route(/jobicy\.com/, r => r.fulfill({ status: 500, body: 'boom' }));            // one source failing must not stop the others
   await page.route(/remoteok\.com/, r => r.fulfill(json([{ legal: 'x' }, { id: 9, url: 'https://remoteok.com/remote-jobs/9', position: 'Staff Nurse Educator', company: 'MedCo', description: 'Patient care and training. 5+ years.', location: 'Kerala, India' }].concat(nurse ? [] : [{ id: 10, url: 'https://remoteok.com/remote-jobs/10', position: 'Frontend Developer', company: 'RemoCo', description: JD, location: 'India' }]))));
+  await page.route(/api\.lever\.co/, r => r.fulfill(json([]))); await page.route(/api\.ashbyhq\.com|api\.smartrecruiters\.com/, r => r.fulfill(json({ jobs: [], content: [] }))); // company boards the region adds by default
   await page.route(/boards-api\.greenhouse\.io/, r => r.fulfill(json({ jobs: [{ id: 1, title: 'Frontend Engineer', absolute_url: 'https://boards.greenhouse.io/testco/jobs/1', location: { name: 'Pune' }, content: '' }] }))); // no description
 }
 
@@ -128,6 +129,24 @@ await test('region: Indian resume keeps Indian and open-to-anyone jobs, hides ot
   await page.goto(BASE + '#/overview'); await page.click('button:has-text("Search")'); await toast(page).filter({ hasText: 'Searching all sources' }).waitFor(); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
   await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0');
   assert.ok((await page.locator('select[aria-label="Company"] option').allInnerTexts()).some(c => /Berliner/.test(c)), 'with no region chosen, other countries return');
+});
+
+await test('company lookup: finds a company public board by name, lists every opening, adds it to searches; unknown companies get a clear answer', async page => {
+  await home(page); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
+  const boards = /boards-api\.greenhouse\.io|api\.ashbyhq\.com|api\.smartrecruiters\.com|api\.lever\.co/;
+  await page.route(boards, r => r.fulfill({ status: 404, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{}' }));   // no board by default
+  await page.route(/api\.lever\.co\/v0\/postings\/testco/, r => r.fulfill(json([{ id: 'a', text: 'Frontend Developer', hostedUrl: 'https://jobs.lever.co/testco/a', categories: { location: 'Pune' }, descriptionPlain: 'React. 3-5 years.' }, { id: 'b', text: 'Office Manager', hostedUrl: 'https://jobs.lever.co/testco/b', categories: { location: 'Berlin' }, descriptionPlain: 'Run the office.' }])));
+  await page.goto(BASE + '#/company'); await page.fill('input[aria-label="Company name"]', 'TestCo Pvt Ltd'); await page.click('button:has-text("Look up")');
+  await page.waitForSelector('section[aria-label="Openings at TestCo Pvt Ltd"]');
+  const sec = page.locator('section[aria-label="Openings at TestCo Pvt Ltd"]'); assert.match(await sec.innerText(), /2 openings on lever:testco/);
+  assert.equal(await sec.locator('p.font-extrabold').count(), 2); assert.equal(await sec.locator('a:has-text("Apply")').first().getAttribute('href'), 'https://jobs.lever.co/testco/a'); // a Berlin opening is listed too: lookup does not apply the region filter
+  await sec.locator('input[aria-label="Filter openings"]').fill('berlin'); assert.equal(await sec.locator('p.font-extrabold').count(), 1); await sec.locator('input[aria-label="Filter openings"]').fill('');
+  await sec.locator('button:has-text("Add to my searches")').click(); await toast(page).filter({ hasText: 'included in every search' }).waitFor();
+  await page.goto(BASE + '#/settings'); assert.match(await page.locator('textarea').first().inputValue(), /lever:testco/);
+  await page.goto(BASE + '#/company'); await page.fill('input[aria-label="Company name"]', 'Nothing Inc'); await page.click('button:has-text("Look up")');
+  await page.getByText('No public job board found for').waitFor(); assert.ok(await page.locator('a:has-text("LinkedIn Jobs")').count() === 1);
+  await page.fill('input[aria-label="Company name"]', 'TestCo'); await page.click('button:has-text("Look up")'); await page.waitForSelector('section[aria-label="Openings at TestCo"]');
+  await sec.waitFor({ state: 'detached' }).catch(() => {}); await page.locator('section[aria-label="Openings at TestCo"] button:has-text("Save these jobs")').click(); await toast(page).filter({ hasText: '2 openings saved' }).waitFor();
 });
 
 await test('two profiles on one browser are isolated; switching restores each', async page => {
@@ -251,7 +270,7 @@ await test('Word layouts: tab columns, soft line breaks and layout tables are re
 
 await test('phone layout has no horizontal overflow; theme toggle works', async page => {
   await page.setViewportSize({ width: 400, height: 800 }); await home(page); await upload(page, file('asha.txt', RESUME_DEV)); await page.waitForSelector('text=Hello, Asha');
-  for (const r of ['overview', 'jobs', 'profile', 'sources', 'settings', 'applications', 'resume']) { await page.goto(BASE + '#/' + r); await page.waitForTimeout(300); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow on ${r}`); }
+  for (const r of ['overview', 'jobs', 'profile', 'sources', 'settings', 'applications', 'resume', 'company']) { await page.goto(BASE + '#/' + r); await page.waitForTimeout(300); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow on ${r}`); }
   await page.click('button[aria-label^="Switch to"]'); assert.ok(await page.evaluate(() => !!document.documentElement.dataset.theme));
 });
 
