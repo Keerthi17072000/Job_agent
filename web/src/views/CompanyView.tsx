@@ -29,7 +29,9 @@ export default function CompanyView() {
       <div className="flex flex-wrap gap-2"><LinkButton href={`https://www.google.com/search?q=${encodeURIComponent(res.asked + ' careers jobs')}`}>Search the web</LinkButton>
         {PORTALS.filter(p => ['linkedin', 'naukri', 'indeed'].includes(p.id)).map(p => <LinkButton key={p.id} href={p.searchUrl(res.asked, '')}>{p.name}</LinkButton>)}</div></Card>}
 
-    {res?.boards.map(b => { const matches = b.jobs.filter(j => (j.title + ' ' + j.location).toLowerCase().includes(q.toLowerCase())), shown = matches.slice(0, 100); // big boards (hundreds of openings) show the best 100; the filter narrows the rest return <section key={b.label} className="space-y-3" aria-label={`Openings at ${b.company.name}`}>
+    {res?.boards.map(b => { // big boards (hundreds of openings) show the best 100; the filter narrows the rest
+      const matches = b.jobs.filter(j => (j.title + ' ' + j.location).toLowerCase().includes(q.toLowerCase())), shown = matches.slice(0, 100);
+      return <section key={b.label} className="space-y-3" aria-label={`Openings at ${b.company.name}`}>
       <Card className="space-y-2"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-base font-extrabold">{b.company.name} <span className="font-medium text-mute">({b.jobs.length} openings on {b.label})</span></h3>
           <p className="text-xs text-mute">Check that these are the right company's jobs: a short name can belong to another company.</p></div>
         <div className="flex gap-2"><Button variant="outline" onClick={async () => { await api.addCompany(b.company); await load(); setMsg(`${b.company.name} added: it is included in every search now.`); }}>Add to my searches</Button>
