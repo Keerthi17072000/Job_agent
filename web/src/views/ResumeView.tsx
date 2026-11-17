@@ -16,6 +16,18 @@ function E({ value, onChange, placeholder, className, tag = 'span', multiline }:
   }, value);
 }
 
+/** Read-only render of the resume in a template, used for the template thumbnails. */
+function Preview({ p, tpl }: { p: Profile; tpl: Template }) {
+  return <div className={cn('resume-page', `tpl-${tpl}`)}>
+    <div className="r-head"><h1>{p.name || 'Your Name'}</h1><p className="r-role">{p.currentDesignation || 'Job title'}</p><p className="r-contact">{[p.email || 'email@example.com', p.phone || 'phone', p.location || 'city'].map(x => <span key={x} className="r-c">{x}</span>)}</p></div>
+    <h2>Summary</h2><p>{p.summary || 'Two or three lines about your experience and strengths.'}</p>
+    <h2>Skills</h2><p>{flatSkills(p).join(', ') || 'Your skills'}</p>
+    <h2>Experience</h2>{(p.experience.length ? p.experience : [{ title: 'Job title', company: 'Company', start: 'Start', end: 'End', summary: 'What you did and the result' }]).slice(0, 3).map((e, i) => <div key={i} className="r-item">
+      <p><span className="r-c r-strong">{e.title}</span><span className="r-c r-strong">{e.company}</span></p><p className="r-dates">{e.start} – {e.end}</p><div className="r-bullets">{bullets(e.summary).map(b => `• ${b}`).join('\n')}</div></div>)}
+    <h2>Education</h2>{(p.education.length ? p.education : [{ degree: 'Degree', institution: 'University', year: 'Year' }]).map((e, i) => <p key={i}>{[e.degree, e.institution, e.year].filter(Boolean).join(', ')}</p>)}
+  </div>;
+}
+
 const download = (blob: Blob, name: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
 
 export default function ResumeView() {
@@ -54,10 +66,10 @@ export default function ResumeView() {
         <p className="text-xs text-mute">The score updates as you edit the resume on the right. It is an estimate of how parser-friendly the resume is, not the score of any particular company's ATS. About {ats.words} words.</p></Card>
 
       <Card className="space-y-3"><h3 className="font-extrabold">Template</h3>
-        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Template">{(Object.keys(TEMPLATES) as Template[]).map(t => <button key={t} type="button" role="radio" aria-checked={tpl === t} onClick={() => setTpl(t)}
-          className={cn('rounded-2xl border-2 p-3 text-left text-sm font-semibold transition-colors', tpl === t ? 'border-brand bg-brand-soft text-brand-ink' : 'border-line hover:border-brand')}>{TEMPLATES[t]}
-          <span className="mt-2 block space-y-1" aria-hidden><span className={cn('block h-1.5 rounded bg-current opacity-70', t === 'classic' ? 'mx-auto w-1/2' : 'w-1/2')} /><span className="block h-1 w-full rounded bg-current opacity-25" /><span className="block h-1 w-4/5 rounded bg-current opacity-25" /></span></button>)}</div>
-        <p className="text-xs text-mute">All four are single-column with plain headings, which is what ATS parsers read most reliably.</p></Card>
+        <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Template">{(Object.keys(TEMPLATES) as Template[]).map(t => <button key={t} type="button" role="radio" aria-checked={tpl === t} onClick={() => setTpl(t)}
+          className={cn('lift rounded-2xl border-2 p-2 text-center text-sm font-semibold transition-colors', tpl === t ? 'border-brand bg-brand-soft text-brand-ink' : 'border-line hover:border-brand')}>
+          <div className="tpl-thumb" aria-hidden><Preview p={p} tpl={t} /></div><span className="mt-2 block">{TEMPLATES[t]}{tpl === t && ' ✓'}</span></button>)}</div>
+        <p className="text-xs text-mute">Each preview is your own resume in that template. Click one to apply it. All are single-column with plain headings, which ATS parsers read most reliably.</p></Card>
 
       <Card className="space-y-3"><h3 className="font-extrabold">Save and download</h3>
         <Button variant="lime" className="w-full" disabled={busy || !dirty} onClick={() => saveProfile(p, st.prefs!)}>{dirty ? 'Save changes' : 'All changes saved'}</Button>

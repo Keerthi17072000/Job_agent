@@ -58,7 +58,7 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
 
 /* ---------- resume page (paper colours are fixed: it must look and print the same in light and dark themes) ---------- */
-.resume-page { background: #fff; color: #111; width: 100%; max-width: 210mm; margin-inline: auto; padding: clamp(16px, 5vw, 16mm); border-radius: 4px; box-shadow: 0 14px 44px -22px rgba(0,0,0,.45); font-size: 10.5pt; line-height: 1.45; overflow-wrap: anywhere; }
+.resume-page { --pad: clamp(16px, 5vw, 16mm); background: #fff; color: #111; width: 100%; max-width: 210mm; margin-inline: auto; padding: var(--pad); border-radius: 4px; box-shadow: 0 14px 44px -22px rgba(0,0,0,.45); font-size: 10.5pt; line-height: 1.45; overflow-wrap: anywhere; }
 @media (min-width: 768px) { .resume-page { min-height: 297mm; } }
 .resume-page h1 { font-size: 22pt; font-weight: 700; letter-spacing: 0; line-height: 1.2; }
 .resume-page h2 { font-size: 11pt; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin: 14pt 0 5pt; padding-bottom: 2pt; border-bottom: 1px solid #111; }
@@ -75,15 +75,30 @@ span.editable { display: inline-block; }
 .editable:empty::before { content: attr(data-placeholder); color: #9a96ad; }
 .tpl-classic { font-family: Georgia, 'Times New Roman', serif; } .tpl-classic .r-head { text-align: center; }
 .tpl-modern { font-family: Arial, Helvetica, sans-serif; } .tpl-modern h1, .tpl-modern h2 { color: #4b32c3; } .tpl-modern h2 { border-color: #4b32c3; }
-.tpl-compact { font-family: Calibri, Arial, sans-serif; font-size: 9.5pt; padding: clamp(14px, 4vw, 11mm); } .tpl-compact h2 { background: #eee; border: 0; padding: 2pt 5pt; margin-top: 9pt; } .tpl-compact h1 { font-size: 18pt; }
+.tpl-compact { --pad: clamp(14px, 4vw, 11mm); font-family: Calibri, Arial, sans-serif; font-size: 9.5pt; } .tpl-compact h2 { background: #eee; border: 0; padding: 2pt 5pt; margin-top: 9pt; } .tpl-compact h1 { font-size: 18pt; }
 .tpl-minimal { font-family: Helvetica, Arial, sans-serif; } .tpl-minimal h1 { font-weight: 400; } .tpl-minimal h2 { border: 0; letter-spacing: .2em; color: #555; font-weight: 600; }
+
+.tpl-banner { font-family: Arial, Helvetica, sans-serif; }
+.tpl-banner .r-head { background: #1f2a44; color: #fff; margin: calc(-1 * var(--pad)) calc(-1 * var(--pad)) 0; padding: calc(var(--pad) * .8) var(--pad); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.tpl-banner .r-head .r-contact { color: #d5dbea; } .tpl-banner .r-head .r-c + .r-c::before { color: #9aa6c4; }
+.tpl-banner .r-head .editable:hover, .tpl-banner .r-head .editable:focus { background: rgba(255,255,255,.16); } .tpl-banner .r-head .editable:empty::before { color: #aab3cc; }
+.tpl-banner h2 { color: #1f2a44; border-bottom: 2px solid #1f2a44; }
+.tpl-elegant { font-family: Garamond, 'Times New Roman', serif; font-size: 11pt; }
+.tpl-elegant .r-head { text-align: center; border-bottom: 3px double #7a5c2e; padding-bottom: 8pt; }
+.tpl-elegant h1 { font-variant: small-caps; font-weight: 400; letter-spacing: .06em; font-size: 24pt; }
+.tpl-elegant h2 { text-align: center; border: 0; color: #7a5c2e; font-variant: small-caps; text-transform: none; font-size: 13pt; letter-spacing: .1em; }
+
+/* template thumbnails: the real template at 20% size, showing your own resume */
+.tpl-thumb { width: 132px; height: 187px; overflow: hidden; border-radius: 6px; background: #fff; margin-inline: auto; pointer-events: none; box-shadow: 0 0 0 1px #d9d5ea; }
+.tpl-thumb .resume-page { --pad: 14mm; width: 750px; max-width: none; min-height: 1062px; transform: scale(.176); transform-origin: top left; box-shadow: none; border-radius: 0; }
 
 @media print {
   @page { size: A4; margin: 14mm; }
   html, body { background: #fff !important; }
   nav, .app-head, [role=status], .progress-bar, .no-print { display: none !important; }
   .shell-pad { padding: 0 !important; } .print-block { display: block !important; }
-  .resume-page { box-shadow: none; max-width: none; min-height: 0; padding: 0; border-radius: 0; }
+  .resume-page { --pad: 0px; box-shadow: none; max-width: none; min-height: 0; border-radius: 0; }
+  .tpl-banner .r-head { margin: 0 0 4mm; padding: 7mm; }
   .editable:empty, .r-c:has(.editable:empty) { display: none; }
   .editable { background: none !important; box-shadow: none !important; }
   .r-item { break-inside: avoid; }

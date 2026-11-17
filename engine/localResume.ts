@@ -5,14 +5,22 @@ import { CITIES, GENERAL, INDUSTRIES, SOFT, TECH, TITLE_WORDS } from './lexicon.
 import { normalizeProfile } from './profile.ts';
 import type { Experience, Profile } from './types.ts';
 
-const SECTIONS: Record<string, RegExp> = {
-  summary: /^((professional|career|executive)\s+)?(summary|profile|objective|about(\s+me)?|overview)$|^summary\s+of\s+(qualifications|experience)$/i,
-  skills: /^((technical|key|core|professional|it|functional|relevant)\s+)?(skills?|competenc(y|ies)|expertise|tools?(\s*(&|and)\s*technologies)?|technologies|tech\s*stack|skills?\s*(&|and)\s*(tools|technologies|abilities|expertise))$|^areas\s+of\s+expertise$|^skills?\s+summary$/i,
-  experience: /^((work|professional|employment|relevant|industry|career)\s+)?(experience|history|background)$|^(work|employment)\s+experience$|^experience\s+summary$|^internships?$/i,
-  projects: /^((academic|key|personal|selected|notable|major)\s+)?projects?$/i,
-  education: /^(education(al)?(\s+(background|qualifications?|details))?|academic(s|\s+qualifications?|\s+background|\s+details)?|qualifications?)$/i,
-  certifications: /^(certifications?|licen[sc]es?|courses|training|achievements?|awards?)(\s*(&|and)\s*\w+)?$/i,
-};
+// Section headings as they appear on real resumes (matched on a normalised form: lower case, letters only). Checked in this order,
+// so "Academic Profile" is education and "Personal Profile" is ignored rather than both being read as a summary.
+const SECTIONS: [string, RegExp][] = [
+  ['other', /^(personal (details?|profile|information|info|data|dossier|particulars)|declaration|hobbies( and interests?)?|interests?|areas? of interests?|languages? (known|spoken|proficiency)|known languages|strengths?( and weakness(es)?)?|weakness(es)?|references?|extra ?curricular( activities)?|co ?curricular( activities)?|activities|contact( details| information| info| me)?|links|social( links| profiles?)?)$/],
+  ['education', /^(education(al)?( (background|qualifications?|details?|profile|credentials?|summary))?|academics?( (qualifications?|background|details?|profile|credentials?|record|summary))?|qualifications?|scholastic( record| details?)?)$/],
+  ['experience', /^(((work|working|professional|employment|relevant|industry|industrial|career|job|total) )?(experiences?|history)( (details?|summary))?|employment( details?)?|professional background|internships?( (experience|details?))?|organi[sz]ational experience)$/],
+  ['projects', /^(((academic|key|personal|selected|notable|major|mini|main|final year|college|live|recent) )?projects?( (details?|undertaken|work|works|experience|handled|done|summary))?)$/],
+  ['skills', /^(((technical|key|core|professional|it|functional|relevant|software|computer|hard|programming|primary) )?(skills?|skill ?sets?|competenc(y|ies)|proficienc(y|ies)|expertise|technologies|tech ?stack|tools)( (and )?(tools|technologies|abilities|expertise|summary|sets?|known|proficiency))*|areas? of expertise|technical (knowledge|summary)|tools (and )?technologies)$/],
+  ['certifications', /^((certifications?|certificates?|licen[sc]es?|courses?|trainings?|achievements?|awards?|honou?rs?|accomplishments?)( (completed|undertaken|attended|and \w+))?)$/],
+  ['summary', /^(((professional|career|carrier|carreer|executive|job|profile) )?(summary|profile|objectives?|about( me)?|overview|synopsis|goals?)|summary of (qualifications?|experience)|career (objectives?|summary|goals?))$/],
+];
+/** "C A R E E R" -> "CAREER" (letter-spaced headings and names in designed PDFs). */
+const despace = (l: string) => l.replace(/\b(?:[A-Za-z] ){3,}[A-Za-z]\b/g, m => m.replace(/ /g, ''));
+const normHead = (l: string) => despace(l).toLowerCase().replace(/&/g, ' and ').replace(/[^a-z ]+/g, ' ').replace(/\s+/g, ' ').trim();
+/** Which section a line starts, if it is a heading. */
+const headingOf = (l: string) => { const h = normHead(l); return h && h.length <= 45 && h.split(' ').length <= 5 ? SECTIONS.find(([, re]) => re.test(h))?.[0] : undefined; };
 const MONTHS = 'jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec';
 const MON = new RegExp(`^(${MONTHS})`, 'i');
 // "Jan 2019", "January, 2019", "Jan'19", "05/2019", "2019"
@@ -39,11 +47,17 @@ function toMonths(d: string, now: Date, isEnd = false): number | null {
 function splitSections(lines: string[]) {
   const out: Record<string, string[]> = {}; let cur = '';
   for (const raw of lines) {
-    const head = clean(raw).replace(/\(.*?\)/g, '').replace(/[:：]\s*$/, '').trim();
-    const name = head.length <= 40 && Object.keys(SECTIONS).find(k => SECTIONS[k].test(head));
-    if (name) { cur = name; out[cur] ??= []; continue; }
+    const line = clean(despace(raw)).replace(/\(.*?\)/g, ''); // despace before collapsing spaces, so the double gap between spaced words survives
+    let name = headingOf(line.replace(/[:：\-–—]\s*$/, ''));
+    let rest = '';
+    if (!name && cur !== 'skills') { // "Career Objective: To obtain ..." on one line (inside Skills, "Label: a, b" is a sub-label instead)
+      const m = /^([^:：]{3,40})[:：]\s*(\S.*)$/.exec(line), h = m && headingOf(m[1]);
+      if (h) { name = h; rest = m![2]; }
+    }
+    if (name) { cur = name; out[cur] ??= []; if (rest) out[cur].push(rest); continue; }
     if (cur) out[cur].push(raw);
   }
+  delete out.other; // personal details, declaration, hobbies: recognised only so they do not leak into the section before them
   return out;
 }
 
@@ -106,10 +120,24 @@ export function parseLocal(text: string, now = new Date()): Profile {
   const head = lines.slice(0, 10).join('\n');
 
   const email = /[\w.+-]+@[\w-]+(\.[\w-]+)+/.exec(text)?.[0] ?? '';
-  const phone = /(\+?\d[\d\s().-]{8,15}\d)/.exec(head)?.[1]?.trim() ?? '';
-  const labelled = /(?:^|\n)\s*name\s*[:\-]\s*([A-Za-z][A-Za-z.' -]{2,40})/i.exec(head)?.[1]?.trim();
-  const properName = (l: string) => /^[A-Za-z][A-Za-z.'-]+(\s+[A-Za-z.'-]+){1,3}$/.test(l) && !TITLE_WORDS.test(l) && !/curriculum|vitae|resume|^cv$|biodata|contact|profile/i.test(l) && !Object.values(SECTIONS).some(re => re.test(l));
-  const name = labelled ?? lines.slice(0, 6).map(clean).find(properName) ?? '';
+  const phone = (/(?:mobile|phone|contact|mob|cell|tel)[\s.a-z]{0,8}[:\-]?\s*(\+?\d[\d\s().-]{8,15}\d)/i.exec(text)?.[1] ?? /(\+?\d[\d\s().-]{8,15}\d)/.exec(head)?.[1] ?? /((?:\+?91[\s-]?)?[6-9]\d{4}[\s-]?\d{5})\b/.exec(text)?.[1] ?? '').trim();
+
+  // name: a "Name:" label wins; otherwise the best short capitalised line near the top that is not a heading, title, place or contact detail
+  const labelled = /^\s*(?:full\s+)?name\s*[:\-–]\s*([A-Za-z][A-Za-z.' ]{1,40}?)\s*$/im.exec(text)?.[1]?.trim();
+  const NOT_NAME = /resume|curriculum|vitae|\bcv\b|bio-?data|objective|summary|profile|experience|education|skills?|declaration|personal|details|contact|career|carrier|address|e-?mail|mobile|phone|linkedin|github|portfolio|www|http|@|\d|india\b/i;
+  const local = email.split('@')[0].toLowerCase().replace(/[^a-z]/g, '');
+  let name = labelled ?? '', best = 0;
+  if (!name) lines.slice(0, 15).forEach((raw, i) => {
+    const piece = clean(despace(raw)).split(/\s*[|•·,/]\s*|\s{3,}|\s+-\s+/)[0].trim(), tok = piece.split(/\s+/);
+    if (tok.length > 4 || piece.length < 3 || piece.length > 40 || !tok.every(t => /^[A-Z][A-Za-z.'-]*$/.test(t)) || NOT_NAME.test(piece) || TITLE_WORDS.test(piece) || headingOf(piece) || CITIES.includes(piece.toLowerCase())) return;
+    const first = tok.map(t => t.toLowerCase().replace(/[^a-z]/g, '')).find(t => t.length >= 3) ?? '';
+    const inEmail = !!first && local.length >= 3 && (local.includes(first) || first.includes(local));
+    const score = (inEmail ? 4 : 0) + (i <= 2 ? 2 : i <= 6 ? 1 : 0) + (tok.length >= 2 ? 2 : 0);
+    if (score >= 3 && score > best) { best = score; name = piece; } // a single word needs the email or the very top of the page to vouch for it
+  });
+
+  // contact lines that sit under a summary heading (name, email, phone, address) are not part of the summary
+  const notContact = (l: string) => l !== name && clean(despace(l)) !== name && !/@|https?:|www\.|linkedin|github/i.test(l) && l.replace(/\D/g, '').length < 8 && !/^(e-?mail|mobile|phone|contact|address|location|dob|date of birth)\b/i.test(l) && !(l.length <= 40 && !/[.!]$/.test(l) && LOCATION.test(l) && l.split(/\s+/).length <= 4);
 
   // skills: the Skills section as written, plus recognised terms anywhere in the resume
   const listed = parseSkillLines(sec.skills ?? []);
@@ -175,6 +203,6 @@ export function parseLocal(text: string, now = new Date()): Profile {
     name, email, phone, totalExperienceYears: years, seniority: seniority(years, titles[0] ?? ''),
     currentDesignation: distinct[0] ?? '', previousDesignations: distinct.slice(1), skills: buckets, experience, projects, education,
     certifications: (sec.certifications ?? []).map(clean).filter(l => l && l.length < 120 && !/^[A-Z &]{4,}$/.test(l)).slice(0, 10),
-    industries, location: cityCase, targetRoles: distinct.slice(0, 3), summary: (sec.summary ?? []).map(clean).join(' ').slice(0, 400),
+    industries, location: cityCase, targetRoles: distinct.slice(0, 3), summary: (sec.summary ?? []).map(l => clean(despace(l))).filter(notContact).join(' ').slice(0, 600),
   });
 }

@@ -144,13 +144,16 @@ await test('ATS section: score, edit on the template, switch template, download 
   const edit = async (label, text) => { const f = page.getByRole('textbox', { name: label, exact: true }).first(); await f.click(); await page.keyboard.press('Control+A'); await page.keyboard.type(text); await f.blur(); };
   await edit('Phone', '+91 98765 43210'); await edit('Your name', 'Asha R Rao');
   await page.waitForFunction(b => +document.querySelector('[aria-label$="percent match"]').getAttribute('aria-label').split(' ')[0] > b, before); // score rises live
-  await page.getByRole('radio', { name: 'Modern' }).click(); await page.waitForSelector('article.tpl-modern');
+  assert.equal(await page.getByRole('radio').count(), 6);
+  for (const t of ['Banner', 'Elegant', 'Compact', 'Minimal', 'Classic', 'Modern']) { await page.getByRole('radio', { name: t }).click(); await page.waitForSelector(`article.tpl-${t.toLowerCase()}`); } // clicking a preview applies it
+  assert.match(await page.getByRole('radio', { name: 'Banner' }).locator('.tpl-thumb').innerText(), /Asha R Rao/);  // previews show your own resume
   assert.equal(await page.locator('article.tpl-modern h1').innerText(), 'Asha R Rao');                       // edits survive a template switch
 
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("Download Word")')]);
   assert.equal(dl.suggestedFilename(), 'Asha_R_Rao.docx');
   const docx = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ja-')), 'out.docx'); await dl.saveAs(docx);
   const pdf = docx.replace('.docx', '.pdf'); fs.writeFileSync(pdf, await page.pdf({ format: 'A4' }));
+  if (process.env.KEEP_EXPORTS) { await page.getByRole('radio', { name: 'Banner' }).click(); await page.screenshot({ path: path.join(process.env.KEEP_EXPORTS, 'banner.png') }); fs.writeFileSync(path.join(process.env.KEEP_EXPORTS, 'banner.pdf'), await page.pdf({ format: 'A4', printBackground: true })); await page.getByRole('radio', { name: 'Modern' }).click(); }
   if (process.env.KEEP_EXPORTS) { fs.copyFileSync(docx, path.join(process.env.KEEP_EXPORTS, 'out.docx')); fs.copyFileSync(pdf, path.join(process.env.KEEP_EXPORTS, 'out.pdf')); await page.screenshot({ path: path.join(process.env.KEEP_EXPORTS, 'resume.png') }); }
 
   await page.click('button:has-text("Save changes")'); await toast(page).filter({ hasText: 'Profile confirmed' }).waitFor();

@@ -237,3 +237,27 @@ test('resume text round-trips through the parser (what we export can be re-uploa
   for (const s of p.allSkills) assert.ok(again.allSkills.includes(s), s);
   assert.deepEqual(again.education, p.education); assert.deepEqual(again.certifications, p.certifications);
 });
+
+// ---- headings that used to be mistaken for the name, and sections that used to leak ----
+const TRICKY = {
+  objectiveFirst: `RESUME\nCareer Objective\nTo obtain a challenging position as a developer where I can use my skills.\nKEERTHIVASAN S\nEmail: keerthivasan.dev@example.com\nMobile No: 9876543210\nChennai, Tamil Nadu\n\nEDUCATIONAL QUALIFICATION\nB.E Computer Science, Anna University, 2022\n\nTECHNICAL SKILLS\nLanguages: JavaScript, TypeScript\nFrameworks: React, Angular\n\nWORK EXPERIENCE\nSoftware Developer\nTechNova Solutions, Chennai\nJune 2022 - Present\n• Developed dashboards in React used by 20 clients\n\nPROJECT DETAILS\nExpense Tracker\nA React app to track expenses.\n\nPERSONAL DETAILS\nFather's Name : Suresh K\nDate of Birth : 17-07-2000\nLanguages Known : Tamil, English\n\nDECLARATION\nI hereby declare that the above information is true.\nPlace: Chennai`,
+  spaced: `C A R E E R  O B J E C T I V E S\nSeeking a role in accounts.\nP R I Y A  M E N O N\npriya.menon@example.com | 98450 12345\nSKILL SET\nTally, GST, Excel\nACADEMIC PROFILE\nB.Com, Calicut University, 2020\nEXPERIENCE DETAILS\nAccountant at Bright Traders, Jan 2021 to Present\nHOBBIES\nReading`,
+  inline: `Curriculum Vitae\nCarrier Objective: To work in a growth oriented organisation.\nPersonal Profile\nName : Arun Kumar\nKey Skills: Sales, CRM, Negotiation\nProfessional Experience\nSales Executive, Zen Motors (2019 - 2023)\nAcademic Qualification\nBBA, Madras University 2019`,
+  oneWord: `Keerthivasan\nFrontend Developer\nkeerthivasan17@example.com\nSkills\nReact`,
+};
+test('a "Career Objective" heading (any spelling, plural, letter-spaced, or with text on the same line) is never taken as the name', () => {
+  const a = parseLocal(TRICKY.objectiveFirst, new Date('2024-06-01'));
+  assert.equal(a.name, 'KEERTHIVASAN S'); assert.equal(a.email, 'keerthivasan.dev@example.com'); assert.equal(a.phone, '9876543210'); assert.equal(a.location, 'Chennai');
+  assert.match(a.summary, /challenging position/); assert.doesNotMatch(a.summary, /KEERTHIVASAN|Email/);
+  assert.deepEqual(a.education, [{ degree: 'B.E Computer Science', institution: 'Anna University', year: '2022' }]);
+  for (const s of ['javascript', 'typescript', 'react', 'angular']) assert.ok(a.allSkills.includes(s), s);
+  assert.deepEqual(a.experience.map(e => [e.title, e.company, e.start, e.end]), [['Software Developer', 'TechNova Solutions', 'June 2022', 'Present']]);
+  assert.equal(a.projects[0].name, 'Expense Tracker'); assert.doesNotMatch(JSON.stringify([a.projects, a.certifications, a.experience]), /Father|declare|Date of Birth/); // personal details and declaration do not leak
+  const b = parseLocal(TRICKY.spaced, new Date('2024-06-01'));
+  assert.equal(b.name, 'PRIYA MENON'); assert.match(b.summary, /accounts/); assert.ok(b.allSkills.includes('tally') && b.allSkills.includes('gst')); assert.equal(b.education[0].institution, 'Calicut University');
+  assert.equal(b.experience[0].title, 'Accountant'); assert.equal(b.experience[0].company, 'Bright Traders'); assert.match(b.phone, /98450/);
+  const c = parseLocal(TRICKY.inline, new Date('2024-06-01'));
+  assert.equal(c.name, 'Arun Kumar'); assert.match(c.summary, /growth oriented/); assert.ok(c.allSkills.includes('sales') && c.allSkills.includes('crm')); assert.equal(c.currentDesignation, 'Sales Executive'); assert.equal(c.education[0].year, '2019');
+  assert.equal(parseLocal(TRICKY.oneWord).name, 'Keerthivasan'); // one-word name, confirmed by the email address
+  for (const t of ['Career Objective\nTo get a job', 'OBJECTIVE\nx', 'Professional Summary\nx', 'Resume\nCurriculum Vitae']) assert.equal(parseLocal(t).name, '', t);
+});
