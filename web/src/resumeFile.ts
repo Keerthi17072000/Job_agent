@@ -1,5 +1,6 @@
 import { extractText, getDocumentProxy } from 'unpdf';
 import mammoth from 'mammoth/mammoth.browser.js';
+import { docxHtmlToText } from '../../engine/text.ts';
 
 export const MAX_RESUME_BYTES = 5 * 1024 * 1024;
 const starts = (b: Uint8Array, s: string) => [...s].every((c, i) => b[i] === c.charCodeAt(0));
@@ -21,7 +22,7 @@ export async function checkResume(f: File): Promise<'pdf' | 'docx' | 'txt'> {
 export async function fileText(f: File): Promise<string> {
   const kind = await checkResume(f);
   const text = kind === 'pdf' ? (await extractText(await getDocumentProxy(new Uint8Array(await f.arrayBuffer())), { mergePages: true })).text
-    : kind === 'docx' ? (await mammoth.extractRawText({ arrayBuffer: await f.arrayBuffer() })).value : await f.text();
+    : kind === 'docx' ? docxHtmlToText((await mammoth.convertToHtml({ arrayBuffer: await f.arrayBuffer() })).value) : await f.text();
   if (text.trim().length < 20) throw new Error('No readable text was found in that file (scanned image PDFs are not supported).');
   return text;
 }

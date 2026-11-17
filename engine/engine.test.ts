@@ -142,12 +142,12 @@ test('resumes from different professions are parsed from their own content', () 
   assert.equal(dev.name, 'Asha Rao'); assert.equal(dev.email, 'asha@x.com'); assert.match(dev.phone, /98765/); assert.equal(dev.location, 'Bangalore');
   assert.equal(dev.currentDesignation, 'Senior Frontend Developer'); assert.deepEqual(dev.previousDesignations, ['Web Developer']); assert.equal(dev.experience[0].company, 'Acme');
   assert.equal(dev.totalExperienceYears, 6.9); // 2017-2018 and 2019-now: the gap year is not counted assert.ok(dev.allSkills.includes('react') && dev.allSkills.includes('vite') && dev.allSkills.includes('git')); assert.ok(!dev.allSkills.includes('python'));
-  assert.deepEqual(dev.education[0], { degree: 'B.Tech Computer Science', institution: 'Anna University', year: '2017' }); assert.deepEqual(dev.certifications, ['AWS Cloud Practitioner']); assert.equal(dev.seniority, 'senior');
+  assert.deepEqual(dev.education[0], { degree: 'B.Tech Computer Science', institution: 'Anna University', year: '2017', grade: '' }); assert.deepEqual(dev.certifications, ['AWS Cloud Practitioner']); assert.equal(dev.seniority, 'senior');
   const n = parseLocal(RESUMES.nurse, new Date('2024-01-01'));
   assert.equal(n.name, 'Priya Nair'); assert.equal(n.currentDesignation, 'Staff Nurse'); assert.equal(n.totalExperienceYears, 6); assert.ok(n.allSkills.includes('patient care') && n.allSkills.includes('iv cannulation')); assert.equal(n.location, 'Kochi');
   assert.ok(n.industries.includes('healthcare')); assert.ok(n.certifications[0].includes('Nursing Council'));
   const m = parseLocal(RESUMES.marketer, new Date('2024-01-01'));
-  assert.equal(m.currentDesignation, 'Marketing Manager'); assert.deepEqual(m.previousDesignations, ['Digital Marketing Executive']); assert.ok(m.allSkills.includes('seo') && m.skills.soft.includes('leadership')); assert.equal(m.totalExperienceYears, 10);
+  assert.equal(m.currentDesignation, 'Marketing Manager'); assert.deepEqual(m.previousDesignations, ['Digital Marketing Executive']); assert.ok(m.allSkills.includes('seo') && m.skills.soft.map(x => x.toLowerCase()).includes('leadership')); assert.equal(m.totalExperienceYears, 10);
   const a = parseLocal(RESUMES.accountant, new Date('2024-01-01'));
   assert.equal(a.currentDesignation, 'Senior Accountant'); assert.equal(a.totalExperienceYears, 8); assert.ok(a.allSkills.includes('tally') && a.allSkills.includes('gst'));
 });
@@ -249,7 +249,7 @@ test('a "Career Objective" heading (any spelling, plural, letter-spaced, or with
   const a = parseLocal(TRICKY.objectiveFirst, new Date('2024-06-01'));
   assert.equal(a.name, 'KEERTHIVASAN S'); assert.equal(a.email, 'keerthivasan.dev@example.com'); assert.equal(a.phone, '9876543210'); assert.equal(a.location, 'Chennai');
   assert.match(a.summary, /challenging position/); assert.doesNotMatch(a.summary, /KEERTHIVASAN|Email/);
-  assert.deepEqual(a.education, [{ degree: 'B.E Computer Science', institution: 'Anna University', year: '2022' }]);
+  assert.deepEqual(a.education, [{ degree: 'B.E Computer Science', institution: 'Anna University', year: '2022', grade: '' }]);
   for (const s of ['javascript', 'typescript', 'react', 'angular']) assert.ok(a.allSkills.includes(s), s);
   assert.deepEqual(a.experience.map(e => [e.title, e.company, e.start, e.end]), [['Software Developer', 'TechNova Solutions', 'June 2022', 'Present']]);
   assert.equal(a.projects[0].name, 'Expense Tracker'); assert.doesNotMatch(JSON.stringify([a.projects, a.certifications, a.experience]), /Father|declare|Date of Birth/); // personal details and declaration do not leak
@@ -277,4 +277,63 @@ test('ATS template check: single column without a photo scores best, two columns
   assert.deepEqual([got(false, false).got, got(false, true).got, got(true, false).got, got(true, true).got], [10, 6, 4, 2]);
   assert.equal(got(false, false).tip, ''); assert.match(got(true, false).tip, /single-column/); assert.match(got(false, true).tip, /photo/);
   assert.equal(atsScore(p).checks.some(c => c.id === 'template'), false);
+});
+
+// ---- real-world layouts (text as extracted from PDF and Word files) ----
+const { RESUME_FIXTURES: FX } = await import('./fixtures.ts');
+const { docxHtmlToText } = await import('./text.ts');
+test('tab-aligned Word resume with a fresher layout: every section is read, none is lost or mixed up', () => {
+  const p = parseLocal(FX.tabbed, new Date('2026-11-17'));
+  assert.equal(p.name, 'ASHA RANI K'); assert.equal(p.email, 'asha.rani@example.com'); assert.equal(p.phone, '+91-9876543210'); assert.deepEqual(p.links, ['https://github.com/asha-rani']);
+  assert.match(p.summary, /challenging position/);
+  assert.deepEqual(p.education.map(e => [e.degree, e.institution, e.year, e.grade]), [
+    ['BE. Computer Science And Engineering', 'Sunrise Engineering College, Salem', '2025', 'CGPA/Percentage: 8.5/85'],
+    ['HSLC, TamilNadu', 'St. Marys. Matriculation Higher Secondary School, Salem', '2021', 'Percentage: 87'],
+    ['SSLC, TamilNadu', 'St. Marys. Matriculation Higher Secondary School, Salem', '2019', 'Percentage: 86']]);
+  assert.deepEqual(p.projects.map(x => x.name), ['Voting Application Using Django', 'Image Recognition Using IBM Cloud Computing']);
+  assert.match(p.projects[0].description, /^The Voting Application/); assert.deepEqual(p.projects[0].tech, ['HTML', 'CSS', 'Node.js', 'Python', 'Django']);
+  assert.deepEqual(p.projects[1].tech, ['IBM Cloud', 'IBM Watson Visual Recognition', 'Python', 'Numpy', 'HTML', 'CSS']);
+  assert.deepEqual(p.skills.frontend, ['HTML', 'CSS', 'Bootstrap', 'React JS']); assert.deepEqual(p.skills.backend.slice(0, 5), ['Python', 'JavaScript', 'C', 'MySQL', 'PHP']);
+  assert.deepEqual(p.skills.soft, ['Communication', 'Teamwork', 'Adaptability', 'Problem-Solving', 'Time Management']); assert.ok(p.skills.other.includes('Power BI') && p.skills.other.includes('MS Excel'));
+  assert.ok(!p.allSkills.includes('project management') && !p.allSkills.includes('training'), 'interests and headings are not skills');
+  assert.deepEqual(p.experience.map(e => [e.title, e.company, e.start, e.end]), [['Training Program in Cloud Computing', 'SD Pro Solutions', 'July 2024', 'Aug 2024'], ['Implant Training Program in Cyber Security', 'Ozone Cyber Security', 'Aug 2023', 'Aug 2023']]);
+  assert.equal(p.totalExperienceYears, 0); assert.equal(p.currentDesignation, '');
+  assert.deepEqual(p.extras.map(x => x.heading), ['Areas of Interest', 'Extra-Curricular Activities']);
+  assert.equal(p.extras[1].text, 'NSS Student Volunteer | 2021-2025\nParticipants in Science Fair | 2020');
+  assert.deepEqual(p.targetRoles, ['Data Analyst', 'Software Developer', 'Digital Marketing Executive']); // a fresher's search titles come from the resume's own areas of interest
+  assert.doesNotMatch(JSON.stringify(p), /declare|true and correct/i);
+});
+test('two-column PDF text: sidebar sections, a degree and its dates on separate lines, and bullets that lost their bullet sign', () => {
+  const p = parseLocal(FX.twoCol, new Date('2026-11-17'));
+  assert.equal(p.name, 'ANITA DESAI'); assert.equal(p.currentDesignation, 'Senior UI/UX Designer'); assert.equal(p.location, 'Mumbai'); assert.equal(p.totalExperienceYears, 5);
+  assert.deepEqual(p.experience.map(e => [e.title, e.company, e.start, e.end]), [['Senior UI/UX Designer', 'Pixel Labs Pvt Ltd', 'Feb 2021', 'Present'], ['UI Designer', 'Brightcore Technologies', 'Jul 2018', 'Jan 2021']]);
+  assert.deepEqual(p.education, [{ degree: 'B.Des Interaction Design', institution: 'MIT Institute of Design', year: '2018', grade: '' }]);
+  assert.deepEqual(p.allSkills.sort(), ['adobe xd', 'css', 'figma', 'html', 'user research', 'wireframing']); // not "onboarding" or "budgeting" from job descriptions
+  assert.equal(p.extras[0].text, 'English, Hindi, Marathi'); assert.equal(p.projects[0].name, 'Expense Tracker App'); assert.match(p.projects[0].description, /budgeting insights/);
+});
+test('centred header, table-style experience and education: company on the line below, department kept in the title', () => {
+  const p = parseLocal(FX.centered, new Date('2026-11-17'));
+  assert.equal(p.name, 'Vikram Singh Rathore'); assert.equal(p.phone, '98100 22334'); assert.equal(p.location, 'Delhi');
+  assert.deepEqual(p.experience.map(e => [e.title, e.company, e.start, e.end]), [['Senior Manager - Audit', 'Deloitte India', '2019', 'Present'], ['Audit Associate', 'KPMG India', '2015', '2019']]);
+  assert.deepEqual(p.education.map(e => [e.degree, e.institution, e.year]), [['Chartered Accountancy CA ICAI', '', '2015'], ['B.Com', 'Delhi University', '2012']]);
+  for (const s of ['statutory audit', 'taxation', 'gst', 'financial reporting', 'tally', 'sap']) assert.ok(p.allSkills.includes(s), s);
+});
+test('plain all-caps resume with a degree table, industrial training and personal details', () => {
+  const p = parseLocal(FX.plainShouty, new Date('2026-11-17'));
+  assert.equal(p.name, 'SURESH BABU K'); assert.equal(p.phone, '9876501234'); assert.equal(p.location, 'Coimbatore'); assert.deepEqual(p.targetRoles, ['Mechanical Engineer']);
+  assert.deepEqual(p.education.map(e => [e.degree, e.institution, e.year, e.grade]), [['B.E Mechanical', 'PSG College of Technology', '2022', '78%'], ['HSC', 'Govt Hr Sec School', '2018', '85%']]);
+  assert.deepEqual(p.experience.map(e => [e.title, e.company, e.start]), [['Trainee', 'Ashok Leyland', 'Dec 2021']]);
+  assert.deepEqual(p.allSkills.sort(), ['autocad', 'catia', 'matlab', 'ms office', 'solidworks']); assert.doesNotMatch(JSON.stringify(p), /Father|05-06-2000|declare/i);
+});
+test('Word HTML to text: soft line breaks, layout tables and tab columns survive', () => {
+  assert.equal(docxHtmlToText('<p>PRIYA NAIR<br />Staff Nurse<br />priya@example.com</p>'), 'PRIYA NAIR\nStaff Nurse\npriya@example.com');
+  assert.equal(docxHtmlToText('<table><tr><td><p>Degree</p></td><td><p>College</p></td><td><p>2022</p></td></tr></table>'), 'Degree\tCollege\t2022');
+  assert.equal(docxHtmlToText('<table><tr><td><p>SKILLS</p><p>React</p></td><td><p>EXPERIENCE</p><p>Engineer</p></td></tr></table>'), 'SKILLS\nReact\nEXPERIENCE\nEngineer');
+  assert.equal(docxHtmlToText('<p>Senior Dev&amp;Ops\tMar 2019 - Present</p>'), 'Senior Dev&Ops\tMar 2019 - Present');
+});
+test('the exported resume text re-parses to the same education grade, project tools, links and extra sections', () => {
+  const p = parseLocal(FX.tabbed, new Date('2026-11-17')), again = parseLocal(resumeText(p), new Date('2026-11-17'));
+  assert.deepEqual(again.education, p.education); assert.deepEqual(again.projects.map(x => [x.name, x.tech]), p.projects.map(x => [x.name, x.tech]));
+  assert.deepEqual(again.links, p.links); assert.deepEqual(again.extras.map(x => x.heading), p.extras.map(x => x.heading)); assert.equal(again.name, p.name);
+  for (const s of p.allSkills) assert.ok(again.allSkills.includes(s), s);
 });

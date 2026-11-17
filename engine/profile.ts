@@ -12,13 +12,14 @@ export function normalizeProfile(j: any): Profile {
   const allSkills = [...new Set(Object.values(skills).flat().map(x => x.toLowerCase()))];
   const years = Number(j?.totalExperienceYears);
   return {
-    name: str(j?.name), email: str(j?.email), phone: str(j?.phone),
+    name: str(j?.name), email: str(j?.email), phone: str(j?.phone), links: uniq(arr(j?.links)),
     totalExperienceYears: Number.isFinite(years) && years >= 0 ? Math.round(years * 10) / 10 : 0,
     seniority: str(j?.seniority), currentDesignation: str(j?.currentDesignation), previousDesignations: uniq(arr(j?.previousDesignations)),
     skills, allSkills,
     experience: (Array.isArray(j?.experience) ? j.experience : []).map((e: any) => ({ company: str(e?.company), title: str(e?.title), start: str(e?.start), end: str(e?.end), summary: str(e?.summary) })),
     projects: (Array.isArray(j?.projects) ? j.projects : []).map((p: any) => ({ name: str(p?.name), description: str(p?.description), tech: arr(p?.tech) })),
-    education: (Array.isArray(j?.education) ? j.education : []).map((e: any) => ({ degree: str(e?.degree), institution: str(e?.institution), year: str(e?.year) })),
+    education: (Array.isArray(j?.education) ? j.education : []).map((e: any) => ({ degree: str(e?.degree), institution: str(e?.institution), year: str(e?.year), grade: str(e?.grade) })),
+    extras: (Array.isArray(j?.extras) ? j.extras : []).map((x: any) => ({ heading: str(x?.heading), text: str(x?.text) })).filter((x: { heading: string; text: string }) => x.heading || x.text),
     certifications: arr(j?.certifications), industries: arr(j?.industries), location: str(j?.location),
     targetRoles: uniq(arr(j?.targetRoles)), summary: str(j?.summary),
   };

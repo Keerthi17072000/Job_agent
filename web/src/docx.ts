@@ -21,15 +21,17 @@ export async function buildDocx(p: Profile, def: TemplateDef): Promise<Blob> {
   if (p.currentDesignation) body.push(para(p.currentDesignation, { size: st.size + 3, center: st.center, ...band }));
   const contact = [p.email, p.phone, p.location].filter(Boolean).join(' | ');
   if (contact) body.push(para(contact, { color: '333333', center: st.center, ...band }));
+  if (p.links.length) body.push(para(p.links.join(' | '), { color: '333333', center: st.center, ...band }));
   if (p.summary) body.push(head('Summary'), para(p.summary));
   if (flatSkills(p).length) body.push(head('Skills'), para(flatSkills(p).join(', ')));
   if (p.experience.length) {
     body.push(head('Experience'));
     for (const e of p.experience) body.push(para([e.title, e.company].filter(Boolean).join(' | '), { bold: true, before: 120 }), para([e.start, e.end].filter(Boolean).join(' – '), { color: '444444' }), ...bullets(e.summary).map(b => para(`• ${b}`)));
   }
-  if (p.projects.length) { body.push(head('Projects')); for (const x of p.projects) body.push(para(x.name, { bold: true, before: 120 }), ...(x.description ? [para(x.description)] : [])); }
-  if (p.education.length) body.push(head('Education'), ...p.education.map(e => para([e.degree, e.institution, e.year].filter(Boolean).join(', '))));
+  if (p.projects.length) { body.push(head('Projects')); for (const x of p.projects) body.push(para(x.name, { bold: true, before: 120 }), ...bullets(x.description).map(d => para(d)), ...(x.tech.length ? [para(`Tools: ${x.tech.join(', ')}`)] : [])); }
+  if (p.education.length) body.push(head('Education'), ...p.education.map(e => para([e.degree, e.institution, e.year, e.grade].filter(Boolean).join(', '))));
   if (p.certifications.length) body.push(head('Certifications'), ...p.certifications.map(c => para(c)));
+  for (const x of p.extras) body.push(head(x.heading), ...x.text.split('\n').filter(Boolean).map(l => para(l)));
 
   const zip = new JSZip();
   zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');

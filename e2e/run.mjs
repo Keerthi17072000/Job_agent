@@ -4,6 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import JSZip from 'jszip';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 
@@ -37,7 +38,7 @@ const test = async (name, fn) => {
   const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 } }), page = await ctx.newPage(), errors = [];
   page.on('pageerror', e => errors.push(e.message)); page.on('console', m => m.type() === 'error' && !/Failed to load resource/.test(m.text()) && errors.push(m.text()));
   try { await mockSources(page); await fn(page, ctx); assert.deepEqual(errors, [], 'console errors'); console.log('ok  -', name); }
-  catch (e) { failed++; console.log('FAIL-', name, '\n    ', e.message.split('\n').slice(0, 6).join(' | ')); await page.screenshot({ path: `e2e-fail-${failed}.png` }).catch(() => {}); }
+  catch (e) { failed++; console.log('FAIL-', name, '\n    ', e.message.split('\n').slice(0, process.env.E2E_VERBOSE ? 80 : 6).join(' | ')); await page.screenshot({ path: `e2e-fail-${failed}.png` }).catch(() => {}); }
   finally { await ctx.close(); }
 };
 const toast = page => page.locator('[role=status]');
@@ -182,11 +183,46 @@ await test('ATS section: score, edit on the template, switch template, download 
   for (const f of [docx, pdf, sidePdf]) {                                                                            // what we export can be uploaded again
     await page.setInputFiles('#resume', f); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
     await page.goto(BASE + '#/resume'); await page.waitForSelector('article.resume-page');
-    assert.equal(await page.locator('article h1').innerText(), 'Asha R Rao', f); assert.match(await page.locator('article .r-contact').innerText(), /98765/, f);
+    assert.equal(await page.locator('article h1').innerText(), 'Asha R Rao', f); assert.match(await page.locator('article .r-contact').first().innerText(), /98765/, f);
     assert.match(await page.locator('article').innerText(), /Frontend Developer/, f); assert.match(await page.locator('article').innerText(), /react/i, f);
     assert.match(await page.locator('article .r-bullets').first().innerText(), /Built dashboards/, f);
     assert.doesNotMatch(await page.locator('article .r-bullets').first().innerText(), /Remove role|Add role/, f); // editor buttons are not printed
   }
+});
+
+/** A minimal .docx with the constructs real Word files use: tab columns, soft line breaks (Shift+Enter) and a layout table. Built here, never shipped. */
+async function wordFile(name, blocks) {
+  const run = t => t.split('\n').map(line => line.split('\t').map(x => `<w:r><w:t xml:space="preserve">${x.replace(/&/g, '&amp;')}</w:t></w:r>`).join('<w:r><w:tab/></w:r>')).join('<w:r><w:br/></w:r>');
+  const p = t => `<w:p>${run(t)}</w:p>`, cell = t => `<w:tc>${p(t)}</w:tc>`; // a table cell holds one paragraph whose lines are soft breaks
+  const body = blocks.map(b => Array.isArray(b) ? `<w:tbl><w:tr>${b.map(cell).join('')}</w:tr></w:tbl>` : p(b)).join('');
+  const z = new JSZip();
+  z.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+  z.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  z.file('word/document.xml', `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}</w:body></w:document>`);
+  return { name, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: await z.generateAsync({ type: 'nodebuffer' }) };
+}
+
+await test('Word layouts: tab columns, soft line breaks and layout tables are read into the right fields', async page => {
+  await home(page);
+  await upload(page, await wordFile('tabbed.docx', ['ASHA RANI  K\t +91-9876543210', ' asha.rani@example.com', 'Carrier Objectives', 'To secure a challenging position in a reputable organization.',
+    'EDucation\t', 'Sunrise Engineering College,Salem\t2021-2025', 'BE.Computer Science And Engineering\tCGPA/Percentage: 8.5/85', 'St.Marys.Matriculation Higher Secondary School,Salem\t2021', 'HSLC,TamilNadu\tPercentage: 87',
+    'Personal Projects\t', 'Voting Application Using Django', 'Description:A web platform for polls.', 'Tools & technologies used:HTML,CSS,PYTHON,DJANGO',
+    'Technical Skills anD Interests\t', 'Languages:Python,JavaScript,C', 'Soft Skills:Communication,Teamwork', 'Area of interest:Data Analysis,Software Development',
+    'Internships\t', 'Training Program in Cloud Computing\tJuly-Aug', 'SD Pro Solutions\t2024', 'Extra-Curricular Activities', 'NSS Student Volunteer\t2021-2025', 'Declaration', 'I hereby declare that the information is true.']));
+  await page.waitForSelector('text=Hello, ASHA'); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+  await page.goto(BASE + '#/resume'); await page.waitForSelector('article.resume-page');
+  const art = page.locator('article'), text = await art.innerText();
+  assert.equal(await art.locator('h1').innerText(), 'ASHA RANI K'); assert.match(text, /98765/); assert.match(text, /asha\.rani@example\.com/);
+  assert.match(text, /Sunrise Engineering College, Salem/); assert.match(text, /8\.5\/85/); assert.match(text, /St\. Marys\. Matriculation Higher Secondary School, Salem/); assert.match(text, /Percentage: 87/);
+  assert.match(text, /Voting Application Using Django/); assert.match(text, /Tools: HTML, CSS, Python, Django/); assert.match(text, /Training Program in Cloud Computing/); assert.match(text, /SD Pro Solutions/);
+  assert.match(text, /Extra-Curricular Activities/i); assert.match(text, /NSS Student Volunteer \| 2021-2025/); assert.match(text, /Areas of Interest/i); assert.match(text, /Data Analysis, Software Development/);
+  assert.doesNotMatch(text, /declare|true\./i);
+  await page.goto(BASE + '#/overview'); await page.getByText('Searching for:').waitFor(); assert.match(await page.locator('text=Searching for:').locator('..').innerText(), /Data Analyst/); // a fresher still gets search titles
+  // soft line breaks and a layout table (name, title and contact glued together by naive extraction)
+  await upload(page, await wordFile('table.docx', [['PRIYA NAIR\nStaff Nurse\npriya.nair@example.com\n+91 98450 12345\nKochi, Kerala', 'PROFESSIONAL SUMMARY\nStaff nurse with 6 years of patient care.\nWORK EXPERIENCE\nStaff Nurse\nCity Hospital, Kochi\nMar 2018 - Present\n• Managed a 12-bed ward']]));
+  await page.waitForSelector('text=Hello, PRIYA'); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+  await page.goto(BASE + '#/resume'); await page.waitForSelector('article.resume-page');
+  assert.equal(await page.locator('article h1').innerText(), 'PRIYA NAIR'); assert.match(await page.locator('article').innerText(), /Staff Nurse/); assert.match(await page.locator('article').innerText(), /City Hospital/); assert.match(await page.locator('article').innerText(), /98450/);
 });
 
 await test('phone layout has no horizontal overflow; theme toggle works', async page => {

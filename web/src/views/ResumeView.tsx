@@ -24,7 +24,7 @@ function Preview({ p, def, photo }: { p: Profile; def: TemplateDef; photo: strin
   const skills = <section><h2>Skills</h2><p>{flatSkills(p).join(', ') || 'Your skills'}</p></section>;
   const exp = <section><h2>Experience</h2>{(p.experience.length ? p.experience : [{ title: 'Job title', company: 'Company', start: 'Start', end: 'End', summary: 'What you did and the result' }]).slice(0, 3).map((e, i) => <div key={i} className="r-item">
     <p><span className="r-c r-strong">{e.title}</span><span className="r-c r-strong">{e.company}</span></p><p className="r-dates">{e.start} – {e.end}</p><div className="r-bullets">{bullets(e.summary).map(b => `• ${b}`).join('\n')}</div></div>)}</section>;
-  const edu = <section><h2>Education</h2>{(p.education.length ? p.education : [{ degree: 'Degree', institution: 'University', year: 'Year' }]).map((e, i) => <p key={i}>{[e.degree, e.institution, e.year].filter(Boolean).join(', ')}</p>)}</section>;
+  const edu = <section><h2>Education</h2>{(p.education.length ? p.education : [{ degree: 'Degree', institution: 'University', year: 'Year', grade: '' }]).map((e, i) => <p key={i}>{[e.degree, e.institution, e.year].filter(Boolean).join(', ')}</p>)}</section>;
   const side = <div className="r-side">{skills}{edu}</div>, main = <div className="r-main">{summary}{exp}</div>;
   return <div className="resume-page" {...paperProps(def)}>
     <div className={cn('r-head', def.photo && 'has-photo')}>{def.photo && (photo ? <img className="r-photo" src={photo} alt="" /> : <span className="r-photo">Photo</span>)}
@@ -81,12 +81,17 @@ export default function ResumeView() {
   const projSec = <section className={cn(!p.projects.length && 'no-print')}><h2>Projects</h2>
           {p.projects.map((x, i) => <div key={i} className="r-item"><E tag="p" className="r-strong" value={x.name} onChange={v => setProj(i, { name: v })} placeholder="Project name" />
             <E tag="p" multiline className="r-pre" value={x.description} onChange={v => setProj(i, { description: v })} placeholder="What it does and what you used" />
+            <p className="r-dates">Tools: <E value={x.tech.join(', ')} onChange={v => setProj(i, { tech: lines(v) })} placeholder="Tools and technologies, separated by commas" /></p>
             <Tool del onClick={() => up({ projects: p.projects.filter((_, j) => j !== i) })}>Remove project</Tool></div>)}
           <Tool onClick={() => up({ projects: [...p.projects, { name: '', description: '', tech: [] }] })}>+ Add project</Tool></section>;
   const eduSec = <section className={cn(!p.education.length && 'no-print')}><h2>Education</h2>
-          {p.education.map((e, i) => <div key={i} className="r-item"><p className="r-commas"><span className="r-c"><E className="r-strong" value={e.degree} onChange={v => setEdu(i, { degree: v })} placeholder="Degree" /></span><span className="r-c"><E value={e.institution} onChange={v => setEdu(i, { institution: v })} placeholder="College or university" /></span><span className="r-c"><E value={e.year} onChange={v => setEdu(i, { year: v })} placeholder="Year" /></span></p>
+          {p.education.map((e, i) => <div key={i} className="r-item"><p className="r-commas"><span className="r-c"><E className="r-strong" value={e.degree} onChange={v => setEdu(i, { degree: v })} placeholder="Degree" /></span><span className="r-c"><E value={e.institution} onChange={v => setEdu(i, { institution: v })} placeholder="College or university" /></span><span className="r-c"><E value={e.year} onChange={v => setEdu(i, { year: v })} placeholder="Year" /></span><span className="r-c"><E value={e.grade} onChange={v => setEdu(i, { grade: v })} placeholder="Grade or percentage" /></span></p>
             <Tool del onClick={() => up({ education: p.education.filter((_, j) => j !== i) })}>Remove</Tool></div>)}
-          <Tool onClick={() => up({ education: [...p.education, { degree: '', institution: '', year: '' }] })}>+ Add education</Tool></section>;
+          <Tool onClick={() => up({ education: [...p.education, { degree: '', institution: '', year: '', grade: '' }] })}>+ Add education</Tool></section>;
+  const setExtra = (i: number, patch: Partial<Profile['extras'][0]>) => up({ extras: p.extras.map((x, j) => j === i ? { ...x, ...patch } : x) });
+  const extrasSec = <>{p.extras.map((x, i) => <section key={i}><h2><E value={x.heading} onChange={v => setExtra(i, { heading: v })} placeholder="Section title" /></h2>
+    <E tag="div" multiline className="r-pre" value={x.text} onChange={v => setExtra(i, { text: v })} placeholder="One item per line" /><Tool del onClick={() => up({ extras: p.extras.filter((_, j) => j !== i) })}>Remove section</Tool></section>)}
+    <Tool onClick={() => up({ extras: [...p.extras, { heading: 'Hobbies', text: '' }] })}>+ Add section (hobbies, languages, activities)</Tool></>;
   const certSec = <section className={cn(!p.certifications.length && 'no-print')}><h2>Certifications</h2><E tag="div" multiline className="r-pre" value={p.certifications.join('\n')} onChange={v => up({ certifications: v.split('\n').map(x => x.trim()).filter(Boolean) })} placeholder="One certification per line" /></section>;
 
   return <div className="view print-block grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -131,9 +136,10 @@ export default function ResumeView() {
         <header className={cn('r-head', def.photo && 'has-photo')}>{def.photo && (st.photo ? <img className="r-photo" src={st.photo} alt="Profile photo" /> : <label htmlFor="photo" className="r-photo no-print">Add photo</label>)}
           <div className="r-ht"><E tag="h1" value={p.name} onChange={v => up({ name: v })} placeholder="Your name" />
           <E tag="p" className="r-role" value={p.currentDesignation} onChange={v => up({ currentDesignation: v })} placeholder="Job title" />
-          <p className="r-contact"><span className="r-c"><E value={p.email} onChange={v => up({ email: v })} placeholder="Email" /></span><span className="r-c"><E value={p.phone} onChange={v => up({ phone: v })} placeholder="Phone" /></span><span className="r-c"><E value={p.location} onChange={v => up({ location: v })} placeholder="City" /></span></p></div></header>
-        {def.layout === 'single' ? <>{summarySec}{skillsSec}{expSec}{projSec}{eduSec}{certSec}</>
-          : <div className="r-cols">{def.layout === 'left' ? <><div className="r-side">{skillsSec}{eduSec}{certSec}</div><div className="r-main">{summarySec}{expSec}{projSec}</div></> : <><div className="r-main">{summarySec}{expSec}{projSec}</div><div className="r-side">{skillsSec}{eduSec}{certSec}</div></>}</div>}
+          <p className="r-contact"><span className="r-c"><E value={p.email} onChange={v => up({ email: v })} placeholder="Email" /></span><span className="r-c"><E value={p.phone} onChange={v => up({ phone: v })} placeholder="Phone" /></span><span className="r-c"><E value={p.location} onChange={v => up({ location: v })} placeholder="City" /></span></p>
+          <p className="r-contact"><E value={p.links.join(' | ')} onChange={v => up({ links: v.split(/[|,\s]+/).map(x => x.trim()).filter(Boolean) })} placeholder="LinkedIn, GitHub or portfolio links" /></p></div></header>
+        {def.layout === 'single' ? <>{summarySec}{skillsSec}{expSec}{projSec}{eduSec}{certSec}{extrasSec}</>
+          : <div className="r-cols">{def.layout === 'left' ? <><div className="r-side">{skillsSec}{eduSec}{certSec}{extrasSec}</div><div className="r-main">{summarySec}{expSec}{projSec}</div></> : <><div className="r-main">{summarySec}{expSec}{projSec}</div><div className="r-side">{skillsSec}{eduSec}{certSec}{extrasSec}</div></>}</div>}
       </article></div>
   </div>;
 }

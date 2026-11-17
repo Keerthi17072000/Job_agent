@@ -34,3 +34,17 @@ export function salaryValue(s: string): number {
   const nums = [...(s ?? '').replace(/,/g, '').matchAll(/(\d+(?:\.\d+)?)\s*(k|m|lpa|lakhs?)?/gi)].map(m => +m[1] * (/^k$/i.test(m[2] ?? '') ? 1e3 : /^m$/i.test(m[2] ?? '') ? 1e6 : /lpa|lakh/i.test(m[2] ?? '') ? 1e5 : 1));
   return nums.length ? Math.max(...nums) : 0;
 }
+
+/**
+ * Resume text from the HTML mammoth produces for a .docx. Soft line breaks (Shift+Enter, which a plain-text export drops, gluing a
+ * name to the next line) become newlines, every paragraph is its own line, and a table row of short cells becomes "a<TAB>b<TAB>c",
+ * while a layout table whose cells hold whole sections puts each cell's lines one after another.
+ */
+export function docxHtmlToText(html: string): string {
+  const strip = (h: string) => unescape(h.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|h\d|li|div|tr|table)>/gi, '\n').replace(/<[^>]+>/g, '')).replace(/[ \u00a0]+/g, ' ').replace(/ ?\t ?/g, '\t'); // tabs are kept: they separate the columns of a line
+  const withRows = html.replace(/<tr[^>]*>([\s\S]*?)<\/tr>/gi, (_m, row: string) => {
+    const cells = [...row.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(c => strip(c[1]).replace(/\n+$/, ''));
+    return `<p>${(cells.every(c => !c.includes('\n')) ? cells.join('\t') : cells.join('\n')).replace(/\n/g, '<br>')}</p>`;
+  });
+  return strip(withRows).replace(/\n{3,}/g, '\n\n').trim();
+}

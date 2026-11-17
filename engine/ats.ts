@@ -2,7 +2,7 @@
 // dated roles, skills, achievement bullets, sensible length). It is an estimate, not any ATS vendor's real score.
 import type { Job, Profile } from './types.ts';
 
-const ACTION = /^(led|built|designed|developed|managed|created|implemented|improved|increased|reduced|delivered|launched|drove|owned|optimi[sz]ed|automated|migrated|analy[sz]ed|coordinated|trained|negotiated|achieved|established|streamlined|supervised|maintained|resolved|conducted|prepared|handled|generated|grew|spearheaded|executed|planned|organi[sz]ed|collaborated|architected|mentored|wrote|tested|deployed|supported|administered|processed|taught|researched|produced|presented|sold|served|provided|performed|monitored|ensured|worked|shipped|integrated|refactored|scaled|cut|saved|won|closed|recruited|audited|reconciled)\b/i;
+export const ACTION = /^(led|built|designed|developed|managed|created|implemented|improved|increased|reduced|delivered|launched|drove|owned|optimi[sz]ed|automated|migrated|analy[sz]ed|coordinated|trained|negotiated|achieved|established|streamlined|supervised|maintained|resolved|conducted|prepared|handled|generated|grew|spearheaded|executed|planned|organi[sz]ed|collaborated|architected|mentored|wrote|tested|deployed|supported|administered|processed|taught|researched|produced|presented|sold|served|provided|performed|monitored|ensured|worked|shipped|integrated|refactored|scaled|cut|saved|won|closed|recruited|audited|reconciled)\b/i;
 
 /** Bullet lines of a role description (one per line, bullet characters removed). */
 export const bullets = (s: string) => (s ?? '').split('\n').map(l => l.replace(/^[\s•●▪■◦·*\-–—>]+/, '').trim()).filter(Boolean);
@@ -10,13 +10,14 @@ export const flatSkills = (p: Profile) => [...new Map(Object.values(p.skills).fl
 
 /** The resume as plain text, in the same order the templates print it. */
 export function resumeText(p: Profile): string {
-  const out = [p.name, p.currentDesignation, [p.email, p.phone, p.location].filter(Boolean).join(' | ')];
+  const out = [p.name, p.currentDesignation, [p.email, p.phone, p.location].filter(Boolean).join(' | '), p.links.join(' | ')];
   if (p.summary) out.push('SUMMARY', p.summary);
   if (flatSkills(p).length) out.push('SKILLS', flatSkills(p).join(', '));
   if (p.experience.length) out.push('EXPERIENCE', ...p.experience.flatMap(e => [[e.title, e.company].filter(Boolean).join(' | '), [e.start, e.end].filter(Boolean).join(' – '), ...bullets(e.summary).map(b => `• ${b}`)]));
-  if (p.projects.length) out.push('PROJECTS', ...p.projects.flatMap(x => [x.name, x.description]));
-  if (p.education.length) out.push('EDUCATION', ...p.education.map(e => [e.degree, e.institution, e.year].filter(Boolean).join(', ')));
+  if (p.projects.length) out.push('PROJECTS', ...p.projects.flatMap(x => [x.name, x.description, x.tech.length ? `Tools: ${x.tech.join(', ')}` : '']));
+  if (p.education.length) out.push('EDUCATION', ...p.education.map(e => [e.degree, e.institution, e.year, e.grade].filter(Boolean).join(', ')));
   if (p.certifications.length) out.push('CERTIFICATIONS', ...p.certifications);
+  for (const x of p.extras) out.push(x.heading.toUpperCase(), x.text);
   return out.filter(Boolean).join('\n');
 }
 

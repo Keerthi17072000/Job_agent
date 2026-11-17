@@ -41,6 +41,9 @@ No environment variables: keys are entered in the UI. CI (`.github/workflows/ci.
 - Duplicates (same company+title+location, canonical URL, source job id, or near-identical text in the same place) collapse into one job that keeps every source link.
 - Location and salary are filters, not part of the professional fit score. A skill missing from the resume is "not found", never "you lack it".
 
+## What the resume reader understands
+Word files (tab columns, soft line breaks, layout tables), PDFs (single and two-column) and TXT. It reads the Objective/Summary, Skills (with sub-labels such as `Front-End Skills:` and `Soft Skills:`), Experience and Internships (including `Aug` on one line and `2023` on the next), Projects (`Description:` and `Tools & technologies used:`), Education (degree, institution, year, grade or percentage, including 10th/12th), Certifications, links, and Extra-curricular, Hobbies, Interests and Languages as written. Personal details (father's name, date of birth) and the Declaration are left out on purpose. For a fresher with no job history, search titles are suggested from the resume's own objective, areas of interest and skills, and you can edit them.
+
 ## Known limits
 - No accounts, no scheduled daily search (needs a server): optional refresh-on-open instead. Data lives in one browser.
 - Skills in postings are recognised from a built-in vocabulary (about 300 tech, professional and soft-skill terms) plus your own skills, so postings in unusual fields may show "no recognisable skills" and a neutral skill score.

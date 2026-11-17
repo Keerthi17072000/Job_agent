@@ -11,14 +11,15 @@ export interface RawJob {
 
 export interface Experience { company: string; title: string; start: string; end: string; summary: string }
 export interface Profile {
-  name: string; email: string; phone: string; totalExperienceYears: number; seniority: string;
+  name: string; email: string; phone: string; links: string[]; totalExperienceYears: number; seniority: string;
   currentDesignation: string; previousDesignations: string[];
   skills: { frontend: string[]; backend: string[]; frameworks: string[]; libraries: string[]; databases: string[]; cloud: string[]; aiMl: string[]; soft: string[]; other: string[] };
   allSkills: string[]; // every skill above, lower-cased; what the matcher compares against
   experience: Experience[];
   projects: { name: string; description: string; tech: string[] }[];
-  education: { degree: string; institution: string; year: string }[];
+  education: { degree: string; institution: string; year: string; grade: string }[];
   certifications: string[]; industries: string[]; location: string;
+  extras: { heading: string; text: string }[]; // sections such as Extra-curricular activities, Hobbies, Languages known: kept as written
   targetRoles: string[]; // inferred from experience, editable
   summary: string;
 }
