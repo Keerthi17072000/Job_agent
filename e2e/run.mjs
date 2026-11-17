@@ -3,6 +3,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 
@@ -134,9 +135,38 @@ await test('without the extension, portals say so and their search buttons are d
   await page.goto(BASE + '#/profile'); await page.locator('summary', { hasText: 'Text read from your resume' }).click(); await page.waitForSelector('pre:has-text("Frontend developer")');
 });
 
+await test('ATS section: score, edit on the template, switch template, download Word and PDF, re-upload both', async page => {
+  await home(page); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
+  await page.goto(BASE + '#/resume'); await page.waitForSelector('text=ATS score');
+  const score = async () => +(await page.locator('[aria-label$="percent match"]').first().getAttribute('aria-label')).split(' ')[0];
+  const before = await score(); assert.ok(before > 0 && before < 100, `score ${before}`);
+  assert.match(await page.locator('li', { hasText: 'Contact details' }).innerText(), /phone/);               // the missing phone is called out
+  const edit = async (label, text) => { const f = page.getByRole('textbox', { name: label, exact: true }).first(); await f.click(); await page.keyboard.press('Control+A'); await page.keyboard.type(text); await f.blur(); };
+  await edit('Phone', '+91 98765 43210'); await edit('Your name', 'Asha R Rao');
+  await page.waitForFunction(b => +document.querySelector('[aria-label$="percent match"]').getAttribute('aria-label').split(' ')[0] > b, before); // score rises live
+  await page.getByRole('radio', { name: 'Modern' }).click(); await page.waitForSelector('article.tpl-modern');
+  assert.equal(await page.locator('article.tpl-modern h1').innerText(), 'Asha R Rao');                       // edits survive a template switch
+
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("Download Word")')]);
+  assert.equal(dl.suggestedFilename(), 'Asha_R_Rao.docx');
+  const docx = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ja-')), 'out.docx'); await dl.saveAs(docx);
+  const pdf = docx.replace('.docx', '.pdf'); fs.writeFileSync(pdf, await page.pdf({ format: 'A4' }));
+  if (process.env.KEEP_EXPORTS) { fs.copyFileSync(docx, path.join(process.env.KEEP_EXPORTS, 'out.docx')); fs.copyFileSync(pdf, path.join(process.env.KEEP_EXPORTS, 'out.pdf')); await page.screenshot({ path: path.join(process.env.KEEP_EXPORTS, 'resume.png') }); }
+
+  await page.click('button:has-text("Save changes")'); await toast(page).filter({ hasText: 'Profile confirmed' }).waitFor();
+  for (const f of [docx, pdf]) {                                                                            // what we export can be uploaded again
+    await page.setInputFiles('#resume', f); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+    await page.goto(BASE + '#/resume'); await page.waitForSelector('article.resume-page');
+    assert.equal(await page.locator('article h1').innerText(), 'Asha R Rao', f); assert.match(await page.locator('article .r-contact').innerText(), /98765/, f);
+    assert.match(await page.locator('article').innerText(), /Frontend Developer/, f); assert.match(await page.locator('article').innerText(), /react/i, f);
+    assert.match(await page.locator('article .r-bullets').first().innerText(), /Built dashboards/, f);
+    assert.doesNotMatch(await page.locator('article .r-bullets').first().innerText(), /Remove role|Add role/, f); // editor buttons are not printed
+  }
+});
+
 await test('phone layout has no horizontal overflow; theme toggle works', async page => {
   await page.setViewportSize({ width: 400, height: 800 }); await home(page); await upload(page, file('asha.txt', RESUME_DEV)); await page.waitForSelector('text=Hello, Asha');
-  for (const r of ['overview', 'jobs', 'profile', 'sources', 'settings', 'applications']) { await page.goto(BASE + '#/' + r); await page.waitForTimeout(300); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow on ${r}`); }
+  for (const r of ['overview', 'jobs', 'profile', 'sources', 'settings', 'applications', 'resume']) { await page.goto(BASE + '#/' + r); await page.waitForTimeout(300); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `overflow on ${r}`); }
   await page.click('button[aria-label^="Switch to"]'); assert.ok(await page.evaluate(() => !!document.documentElement.dataset.theme));
 });
 

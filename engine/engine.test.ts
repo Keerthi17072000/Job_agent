@@ -142,7 +142,7 @@ test('resumes from different professions are parsed from their own content', () 
   assert.equal(dev.name, 'Asha Rao'); assert.equal(dev.email, 'asha@x.com'); assert.match(dev.phone, /98765/); assert.equal(dev.location, 'Bangalore');
   assert.equal(dev.currentDesignation, 'Senior Frontend Developer'); assert.deepEqual(dev.previousDesignations, ['Web Developer']); assert.equal(dev.experience[0].company, 'Acme');
   assert.equal(dev.totalExperienceYears, 6.9); // 2017-2018 and 2019-now: the gap year is not counted assert.ok(dev.allSkills.includes('react') && dev.allSkills.includes('vite') && dev.allSkills.includes('git')); assert.ok(!dev.allSkills.includes('python'));
-  assert.equal(dev.education[0].year, '2017'); assert.deepEqual(dev.certifications, ['AWS Cloud Practitioner']); assert.equal(dev.seniority, 'senior');
+  assert.deepEqual(dev.education[0], { degree: 'B.Tech Computer Science', institution: 'Anna University', year: '2017' }); assert.deepEqual(dev.certifications, ['AWS Cloud Practitioner']); assert.equal(dev.seniority, 'senior');
   const n = parseLocal(RESUMES.nurse, new Date('2024-01-01'));
   assert.equal(n.name, 'Priya Nair'); assert.equal(n.currentDesignation, 'Staff Nurse'); assert.equal(n.totalExperienceYears, 6); assert.ok(n.allSkills.includes('patient care') && n.allSkills.includes('iv cannulation')); assert.equal(n.location, 'Kochi');
   assert.ok(n.industries.includes('healthcare')); assert.ok(n.certifications[0].includes('Nursing Council'));
@@ -202,4 +202,38 @@ test('labelled name and location, "to" date ranges, a CV title line is not the n
   const p = parseLocal(LAYOUTS.labels, new Date('2024-06-01'));
   assert.equal(p.name, 'Vikram Singh'); assert.equal(p.location, 'Chennai'); assert.equal(p.experience[0].title, 'Accounts Executive'); assert.equal(p.experience[0].company, 'Sunrise Traders');
   assert.equal(p.totalExperienceYears, 5); assert.ok(p.allSkills.includes('tally erp') && p.allSkills.includes('gst') && p.allSkills.includes('tds'));
+});
+
+// ---- ATS score ----
+const { atsScore, resumeText, bullets } = await import('./ats.ts');
+test('ATS score: complete resume scores high, empty one low, and each fix moves the score', () => {
+  const full = normalizeProfile({
+    name: 'Asha Rao', email: 'asha@example.com', phone: '+91 98765 43210', location: 'Bangalore', currentDesignation: 'Frontend Developer',
+    summary: 'Frontend developer with 6 years building dashboards and design systems for fintech products used by thousands of customers every day. '.repeat(3),
+    skills: { frontend: ['React', 'TypeScript', 'CSS', 'HTML'], backend: ['Node.js'], databases: ['PostgreSQL'], cloud: ['AWS', 'Docker'] },
+    experience: [{ title: 'Frontend Developer', company: 'Acme', start: 'Jan 2019', end: 'Present', summary: Array.from({ length: 6 }, (_, i) => `Built feature ${i} that reduced load time by ${10 + i}% for a large group of paying customers across several regions and product lines`).join('\n') }],
+    education: [{ degree: 'B.Tech Computer Science', institution: 'Anna University', year: '2018' }],
+    projects: [{ name: 'Design system', description: 'Shared component library adopted by five product teams, with documentation, accessibility checks, visual regression tests and release automation. '.repeat(4), tech: [] }],
+  });
+  const a = atsScore(full); assert.ok(a.score >= 90, `got ${a.score}`); assert.ok(a.checks.every(c => c.got <= c.max));
+  const e = atsScore(normalizeProfile({})); assert.ok(e.score < 10, `got ${e.score}`); assert.ok(e.checks.filter(c => c.tip).length >= 6);
+  const noPhone = atsScore({ ...full, phone: '' }); assert.ok(noPhone.score < a.score); assert.match(noPhone.checks.find(c => c.id === 'contact')!.tip, /phone/);
+  const flat = atsScore({ ...full, experience: [{ ...full.experience[0], summary: 'Responsible for the website\nVarious tasks' }] });
+  assert.ok(flat.checks.find(c => c.id === 'metrics')!.got === 0 && flat.checks.find(c => c.id === 'verbs')!.got === 0);
+});
+test('ATS keywords come from matched jobs only when there are enough, and never count skills you lack as yours', () => {
+  const p = normalizeProfile({ skills: { other: ['react'] } });
+  assert.equal(atsScore(p, [{ score: 70, requiredSkills: ['react', 'graphql'] }]).checks.some(c => c.id === 'keywords'), false);
+  const r = atsScore(p, Array.from({ length: 5 }, () => ({ score: 70, requiredSkills: ['react', 'graphql'] })));
+  assert.deepEqual(r.missingKeywords, ['graphql']); assert.equal(r.checks.find(c => c.id === 'keywords')!.got, 5);
+});
+test('resume text round-trips through the parser (what we export can be re-uploaded)', () => {
+  const p = parseLocal(LAYOUTS.stacked, new Date('2024-06-01'));
+  assert.deepEqual(bullets(p.experience[0].summary), ['Designed payment microservices on Kafka', 'Led a team of 4']);
+  const again = parseLocal(resumeText(p), new Date('2024-06-01'));
+  assert.equal(again.name, p.name); assert.equal(again.email, p.email); assert.equal(again.currentDesignation, p.currentDesignation);
+  assert.deepEqual(again.experience.map(e => [e.title, e.company, e.start, e.end]), p.experience.map(e => [e.title, e.company, e.start, e.end]));
+  assert.deepEqual(bullets(again.experience[0].summary), bullets(p.experience[0].summary));
+  for (const s of p.allSkills) assert.ok(again.allSkills.includes(s), s);
+  assert.deepEqual(again.education, p.education); assert.deepEqual(again.certifications, p.certifications);
 });

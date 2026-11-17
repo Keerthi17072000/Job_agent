@@ -56,3 +56,35 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 @keyframes growx { from { transform: scaleX(0); } }
 @keyframes ring { from { stroke-dashoffset: var(--c); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+
+/* ---------- resume page (paper colours are fixed: it must look and print the same in light and dark themes) ---------- */
+.resume-page { background: #fff; color: #111; width: 100%; max-width: 210mm; margin-inline: auto; padding: clamp(16px, 5vw, 16mm); border-radius: 4px; box-shadow: 0 14px 44px -22px rgba(0,0,0,.45); font-size: 10.5pt; line-height: 1.45; overflow-wrap: anywhere; }
+@media (min-width: 768px) { .resume-page { min-height: 297mm; } }
+.resume-page h1 { font-size: 22pt; font-weight: 700; letter-spacing: 0; line-height: 1.2; }
+.resume-page h2 { font-size: 11pt; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; margin: 14pt 0 5pt; padding-bottom: 2pt; border-bottom: 1px solid #111; }
+.resume-page .r-role { font-size: 12pt; } .resume-page .r-contact { font-size: 9.5pt; color: #333; }
+.resume-page .r-c + .r-c::before { content: ' | '; color: #666; }
+.resume-page .r-commas .r-c + .r-c::before { content: ', '; color: inherit; }
+.resume-page .r-strong { font-weight: 700; } .resume-page .r-dates { font-size: 9.5pt; color: #444; }
+.resume-page .r-bullets, .resume-page .r-pre { white-space: pre-line; } .resume-page .r-item { margin-bottom: 8pt; }
+.resume-page .r-tool { font: 600 11px system-ui; color: #5a3fe0; padding: 2px 8px; border-radius: 999px; background: #ebe6ff; margin-top: 4px; }
+.resume-page .r-tool.del { color: #b3261e; background: #fde4e1; }
+.editable { outline: none; border-radius: 3px; min-width: 3ch; cursor: text; }
+span.editable { display: inline-block; }
+.editable:hover { background: #f3f0ff; } .editable:focus { background: #ebe6ff; box-shadow: 0 0 0 2px #7a5cff66; }
+.editable:empty::before { content: attr(data-placeholder); color: #9a96ad; }
+.tpl-classic { font-family: Georgia, 'Times New Roman', serif; } .tpl-classic .r-head { text-align: center; }
+.tpl-modern { font-family: Arial, Helvetica, sans-serif; } .tpl-modern h1, .tpl-modern h2 { color: #4b32c3; } .tpl-modern h2 { border-color: #4b32c3; }
+.tpl-compact { font-family: Calibri, Arial, sans-serif; font-size: 9.5pt; padding: clamp(14px, 4vw, 11mm); } .tpl-compact h2 { background: #eee; border: 0; padding: 2pt 5pt; margin-top: 9pt; } .tpl-compact h1 { font-size: 18pt; }
+.tpl-minimal { font-family: Helvetica, Arial, sans-serif; } .tpl-minimal h1 { font-weight: 400; } .tpl-minimal h2 { border: 0; letter-spacing: .2em; color: #555; font-weight: 600; }
+
+@media print {
+  @page { size: A4; margin: 14mm; }
+  html, body { background: #fff !important; }
+  nav, .app-head, [role=status], .progress-bar, .no-print { display: none !important; }
+  .shell-pad { padding: 0 !important; } .print-block { display: block !important; }
+  .resume-page { box-shadow: none; max-width: none; min-height: 0; padding: 0; border-radius: 0; }
+  .editable:empty, .r-c:has(.editable:empty) { display: none; }
+  .editable { background: none !important; box-shadow: none !important; }
+  .r-item { break-inside: avoid; }
+}

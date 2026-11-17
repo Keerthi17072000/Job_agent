@@ -10,6 +10,7 @@
     "e2e": "node e2e/run.mjs && node e2e/extension.mjs"
   },
   "dependencies": {
+    "jszip": "^3.10.2",
     "mammoth": "^1.8.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

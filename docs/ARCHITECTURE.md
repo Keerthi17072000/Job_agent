@@ -33,6 +33,8 @@ resume file ──> checkResume (type by content, 5 MB)  ──> fileText (pdf/d
 | `engine/adapters/*` | Source connectors implementing `searchJobs`, `getJobDetails`, `normalizeJob`, `getSourceStatus` (`makeAdapter` adds status, logging, failure isolation). |
 | `engine/http.ts` | `getJson`: per-host spacing, retry with backoff on network/429/5xx, no retry on other 4xx, cancellation, log hook. |
 | `engine/match.ts` | Hybrid score: skills 35, experience 20, responsibilities 20, title 15, education/other 10. Location and salary are filters. Optional semantic similarity replaces the word-overlap responsibility estimate. |
+| `engine/ats.ts` | ATS-readiness checks (contact, sections, skills, dated roles, bullets, verbs, numbers, length, keywords from matched jobs) and `resumeText`, the canonical plain-text layout shared by the templates and the Word export. |
+| `web/src/docx.ts` | Minimal real .docx writer (JSZip + WordprocessingML paragraphs), one style per template. |
 | `engine/pipeline.ts` | `toJob`, duplicate detection (company+title+location, canonical URL, source job id, description similarity), `ingest`. |
 | `web/src/api.ts` | Application service used by the UI: resume, profile, search, rescoring, slots. |
 | `web/src/worker/embed.ts` | On-device sentence embeddings (MiniLM via transformers.js loaded from a CDN) in a Web Worker; optional. |

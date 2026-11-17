@@ -9,9 +9,10 @@ import ApplicationsView from './views/ApplicationsView.tsx';
 import ProfileView from './views/ProfileView.tsx';
 import SourcesView from './views/SourcesView.tsx';
 import SettingsView from './views/SettingsView.tsx';
+import ResumeView from './views/ResumeView.tsx';
 
-const NAV: [string, string, keyof typeof ICONS][] = [['overview', 'Overview', 'overview'], ['jobs', 'Jobs', 'jobs'], ['saved', 'Saved', 'saved'], ['applications', 'Applications', 'applications'], ['profile', 'Profile', 'profile'], ['sources', 'Sources', 'sources'], ['settings', 'Settings', 'settings']];
-const TITLES: Record<string, string> = { overview: 'Overview', jobs: 'Jobs', saved: 'Saved jobs', applications: 'Applications', profile: 'Profile', sources: 'Sources', settings: 'Settings', job: 'Job details' };
+const NAV: [string, string, keyof typeof ICONS][] = [['overview', 'Overview', 'overview'], ['jobs', 'Jobs', 'jobs'], ['saved', 'Saved', 'saved'], ['applications', 'Applications', 'applications'], ['resume', 'Resume and ATS score', 'resume'], ['profile', 'Profile', 'profile'], ['sources', 'Sources', 'sources'], ['settings', 'Settings', 'settings']];
+const TITLES: Record<string, string> = { overview: 'Overview', jobs: 'Jobs', saved: 'Saved jobs', applications: 'Applications', resume: 'Resume and ATS score', profile: 'Profile', sources: 'Sources', settings: 'Settings', job: 'Job details' };
 
 function useTheme() {
   const [t, setT] = useState<string | null>(() => { try { return localStorage.getItem('ja.theme'); } catch { return null; } });
@@ -36,12 +37,12 @@ function Shell() {
     <nav aria-label="Main" className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-full bg-rail p-1.5 shadow-2xl md:inset-x-auto md:bottom-auto md:left-4 md:top-1/2 md:-translate-y-1/2 md:flex-col md:gap-1.5 md:p-2">
       <a href="#/overview" aria-label="Job Agent home" className="hidden size-11 place-items-center rounded-full bg-lime text-lime-ink md:grid"><Icon d={ICONS.search} /></a>
       {NAV.map(([id, label, icon]) => <a key={id} href={`#/${id}`} aria-label={label} title={label} aria-current={active === id ? 'page' : undefined}
-        className={cn('relative grid size-11 place-items-center rounded-full text-white/60 transition-all hover:text-white', active === id && 'bg-white/15 text-white')}><Icon d={ICONS[icon]} />
+        className={cn('relative grid size-10 place-items-center rounded-full text-white/60 md:size-11 transition-all hover:text-white', active === id && 'bg-white/15 text-white')}><Icon d={ICONS[icon]} />
         {id === 'saved' && saved > 0 && <span className="absolute right-1 top-1 grid min-w-4 place-items-center rounded-full bg-lime px-1 text-[10px] font-extrabold text-lime-ink">{saved}</span>}</a>)}
     </nav>
 
-    <div className="px-4 pb-28 pt-5 md:pb-8 md:pl-24 md:pr-6">
-      <header className="mx-auto mb-5 flex max-w-[1500px] items-center justify-between gap-3">
+    <div className="shell-pad px-4 pb-28 pt-5 md:pb-8 md:pl-24 md:pr-6">
+      <header className="app-head mx-auto mb-5 flex max-w-[1500px] items-center justify-between gap-3">
         <h1 className="text-3xl font-extrabold md:text-4xl">{TITLES[route] ?? 'Overview'}</h1>
         <div className="flex items-center gap-2">
           {st?.slots.length ? <span className="hidden rounded-full bg-card px-4 py-2 text-sm font-semibold sm:inline">{st.slot.name}</span> : null}
@@ -50,7 +51,7 @@ function Shell() {
       </header>
       <main className="mx-auto max-w-[1500px]" key={route + param}>
         {!st ? <div className="grid gap-4 md:grid-cols-2"><div className="skel h-40" /><div className="skel h-40" /></div>
-          : route === 'jobs' ? <JobsView /> : route === 'saved' ? <JobsView savedOnly /> : route === 'job' ? <JobDetail id={param} /> : route === 'applications' ? <ApplicationsView />
+          : route === 'jobs' ? <JobsView /> : route === 'saved' ? <JobsView savedOnly /> : route === 'job' ? <JobDetail id={param} /> : route === 'applications' ? <ApplicationsView /> : route === 'resume' ? <ResumeView />
           : route === 'profile' ? <ProfileView /> : route === 'sources' ? <SourcesView /> : route === 'settings' ? <SettingsView dark={dark} toggleTheme={toggleTheme} /> : <Overview />}
       </main>
     </div>

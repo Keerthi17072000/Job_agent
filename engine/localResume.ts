@@ -84,7 +84,7 @@ function parseExperience(lines: string[]): Experience[] {
     const title = cands.find(c => TITLE_WORDS.test(c) && c.length < 70) ?? '';
     const company = cands.find(c => c !== title && !LOCATION.test(c) && !/^\d/.test(c) && c.length < 70) ?? '';
     const end = n + 1 < dateAt.length ? (headers[n + 1][0]?.at ?? dateAt[n + 1]) : L.length;
-    return { company, title, start: r[1], end: r[2], summary: L.slice(i + 1, end).map(x => x.l).join(' ').slice(0, 600) };
+    return { company, title, start: r[1], end: r[2], summary: L.slice(i + 1, end).map(x => x.l).join('\n').slice(0, 1500) }; // one line per bullet
   });
 }
 
@@ -146,7 +146,11 @@ export function parseLocal(text: string, now = new Date()): Profile {
   const eduLines = (sec.education ?? lines.filter(l => EDU_CI.test(l))).map(clean).filter(Boolean); // no Education heading: use lines that name a degree
   const education = eduLines.filter(l => EDU.test(l) || INSTITUTION.test(l)).reduce<{ degree: string; institution: string; year: string }[]>((acc, l) => {
     const year = /(19|20)\d\d/.exec(l.match(/(19|20)\d\d(?!.*(19|20)\d\d)/)?.[0] ?? '')?.[0] ?? '';
-    if (EDU.test(l)) acc.push({ degree: l.replace(/[,(–—-]?\s*(19|20)\d\d.*$/, '').trim(), institution: INSTITUTION.test(l) ? (l.split(/,|–|—| - /).find(p => INSTITUTION.test(p)) ?? '').trim() : '', year });
+    if (EDU.test(l)) { // "Degree, Institution, 2018" in any of the usual separators
+      const parts = l.replace(/[,(–—-]?\s*\(?(19|20)\d\d.*$/, '').split(/,|–|—| - |\|/).map(x => x.trim()).filter(Boolean);
+      const institution = parts.find(x => INSTITUTION.test(x) && !EDU.test(x)) ?? '';
+      acc.push({ degree: parts.filter(x => x !== institution).join(', '), institution, year });
+    }
     else if (acc.length && !acc.at(-1)!.institution) { acc.at(-1)!.institution = l.replace(/[,(–—-]?\s*(19|20)\d\d.*$/, '').trim(); if (!acc.at(-1)!.year) acc.at(-1)!.year = year; }
     return acc;
   }, []).slice(0, 5);
