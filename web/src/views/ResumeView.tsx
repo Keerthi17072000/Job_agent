@@ -1,6 +1,7 @@
 import { createElement, useEffect, useMemo, useState } from 'react';
 import { atsScore, bullets, flatSkills } from '../../../engine/ats.ts';
-import { TEMPLATES, buildDocx, type Template } from '../docx.ts';
+import { buildDocx } from '../docx.ts';
+import { CATEGORIES, TEMPLATE_DEFS, paperProps, templateById, type TemplateDef } from '../templates.ts';
 import { Badge, Button, Card, ScoreRing, cn } from '../ui.tsx';
 import { useApp } from '../state.tsx';
 import { ReplaceResume, UploadCard, lines } from './common.tsx';
@@ -17,14 +18,16 @@ function E({ value, onChange, placeholder, className, tag = 'span', multiline }:
 }
 
 /** Read-only render of the resume in a template, used for the template thumbnails. */
-function Preview({ p, tpl }: { p: Profile; tpl: Template }) {
-  return <div className={cn('resume-page', `tpl-${tpl}`)}>
+function Preview({ p, def }: { p: Profile; def: TemplateDef }) {
+  const summary = <section><h2>Summary</h2><p>{p.summary || 'Two or three lines about your experience and strengths.'}</p></section>;
+  const skills = <section><h2>Skills</h2><p>{flatSkills(p).join(', ') || 'Your skills'}</p></section>;
+  const exp = <section><h2>Experience</h2>{(p.experience.length ? p.experience : [{ title: 'Job title', company: 'Company', start: 'Start', end: 'End', summary: 'What you did and the result' }]).slice(0, 3).map((e, i) => <div key={i} className="r-item">
+    <p><span className="r-c r-strong">{e.title}</span><span className="r-c r-strong">{e.company}</span></p><p className="r-dates">{e.start} – {e.end}</p><div className="r-bullets">{bullets(e.summary).map(b => `• ${b}`).join('\n')}</div></div>)}</section>;
+  const edu = <section><h2>Education</h2>{(p.education.length ? p.education : [{ degree: 'Degree', institution: 'University', year: 'Year' }]).map((e, i) => <p key={i}>{[e.degree, e.institution, e.year].filter(Boolean).join(', ')}</p>)}</section>;
+  const side = <div className="r-side">{skills}{edu}</div>, main = <div className="r-main">{summary}{exp}</div>;
+  return <div className="resume-page" {...paperProps(def)}>
     <div className="r-head"><h1>{p.name || 'Your Name'}</h1><p className="r-role">{p.currentDesignation || 'Job title'}</p><p className="r-contact">{[p.email || 'email@example.com', p.phone || 'phone', p.location || 'city'].map(x => <span key={x} className="r-c">{x}</span>)}</p></div>
-    <h2>Summary</h2><p>{p.summary || 'Two or three lines about your experience and strengths.'}</p>
-    <h2>Skills</h2><p>{flatSkills(p).join(', ') || 'Your skills'}</p>
-    <h2>Experience</h2>{(p.experience.length ? p.experience : [{ title: 'Job title', company: 'Company', start: 'Start', end: 'End', summary: 'What you did and the result' }]).slice(0, 3).map((e, i) => <div key={i} className="r-item">
-      <p><span className="r-c r-strong">{e.title}</span><span className="r-c r-strong">{e.company}</span></p><p className="r-dates">{e.start} – {e.end}</p><div className="r-bullets">{bullets(e.summary).map(b => `• ${b}`).join('\n')}</div></div>)}
-    <h2>Education</h2>{(p.education.length ? p.education : [{ degree: 'Degree', institution: 'University', year: 'Year' }]).map((e, i) => <p key={i}>{[e.degree, e.institution, e.year].filter(Boolean).join(', ')}</p>)}
+    {def.layout === 'single' ? <>{summary}{skills}{exp}{edu}</> : <div className="r-cols">{def.layout === 'left' ? <>{side}{main}</> : <>{main}{side}</>}</div>}
   </div>;
 }
 
@@ -33,14 +36,16 @@ const download = (blob: Blob, name: string) => { const a = document.createElemen
 export default function ResumeView() {
   const { st, saveProfile, busy, setMsg } = useApp();
   const [p, setP] = useState<Profile | null>(null);
-  const [tpl, setTplState] = useState<Template>(() => { try { const t = localStorage.getItem('ja.template'); return t && t in TEMPLATES ? t as Template : 'classic'; } catch { return 'classic'; } });
+  const [tpl, setTplState] = useState(() => { try { return templateById(localStorage.getItem('ja.template')).id; } catch { return TEMPLATE_DEFS[0].id; } });
+  const def = templateById(tpl);
+  const [cat, setCat] = useState(def.category);
   useEffect(() => { if (st?.profile) setP(st.profile); }, [st?.profile]);
   const ats = useMemo(() => (p ? atsScore(p, st?.jobs ?? []) : null), [p, st?.jobs]);
   if (!st) return null;
   if (!p || !ats || !st.prefs) return <div className="view mx-auto max-w-2xl space-y-5 py-8 text-center"><h2 className="text-2xl font-extrabold">Check your resume's ATS score</h2>
     <p className="text-mute">Upload a resume to see how well applicant-tracking software can read it, fix it right on the page, pick a template and download it as PDF or Word.</p><UploadCard big /></div>;
 
-  const setTpl = (t: Template) => { setTplState(t); try { localStorage.setItem('ja.template', t); } catch { /* storage blocked: choice just will not persist */ } };
+  const setTpl = (t: string) => { setTplState(t); try { localStorage.setItem('ja.template', t); } catch { /* storage blocked: choice just will not persist */ } };
   const up = (patch: Partial<Profile>) => setP({ ...p, ...patch });
   const setSkills = (list: string[]) => { // keep each skill in its category; new ones go to "other"
     const want = new Map(list.map(s => [s.toLowerCase(), s]));
@@ -53,8 +58,28 @@ export default function ResumeView() {
   const setProj = (i: number, patch: Partial<Profile['projects'][0]>) => up({ projects: p.projects.map((e, j) => j === i ? { ...e, ...patch } : e) });
   const dirty = JSON.stringify(p) !== JSON.stringify(st.profile);
   const fileBase = (p.name || 'resume').replace(/[^\w]+/g, '_');
-  const word = async () => { try { download(await buildDocx(p, tpl), `${fileBase}.docx`); setMsg('Word file downloaded.'); } catch (e) { setMsg(`Could not build the Word file: ${(e as Error).message}`); } };
+  const word = async () => { try { download(await buildDocx(p, def), `${fileBase}.docx`); setMsg('Word file downloaded.'); } catch (e) { setMsg(`Could not build the Word file: ${(e as Error).message}`); } };
   const Tool = ({ onClick, children, del }: { onClick: () => void; children: string; del?: boolean }) => <button type="button" className={cn('no-print r-tool', del && 'del')} onClick={onClick}>{children}</button>;
+
+  const summarySec = <section className={cn(!p.summary && 'no-print')}><h2>Summary</h2><E tag="p" multiline className="r-pre" value={p.summary} onChange={v => up({ summary: v })} placeholder="Two or three lines on your experience, strengths and what you want next" /></section>;
+  const skillsSec = <section className={cn(!p.allSkills.length && 'no-print')}><h2>Skills</h2><E tag="p" multiline value={flatSkills(p).join(', ')} onChange={v => setSkills(lines(v))} placeholder="Skills separated by commas" /></section>;
+  const expSec = <section className={cn(!p.experience.length && 'no-print')}><h2>Experience</h2>
+          {p.experience.map((e, i) => <div key={i} className="r-item">
+            <p><span className="r-c"><E className="r-strong" value={e.title} onChange={v => setExp(i, { title: v })} placeholder="Job title" /></span><span className="r-c"><E className="r-strong" value={e.company} onChange={v => setExp(i, { company: v })} placeholder="Company" /></span></p>
+            <p className="r-dates"><E value={e.start} onChange={v => setExp(i, { start: v })} placeholder="Start (Jan 2020)" /> – <E value={e.end} onChange={v => setExp(i, { end: v })} placeholder="End or Present" /></p>
+            <E tag="div" multiline className="r-bullets" value={bullets(e.summary).map(b => `• ${b}`).join('\n')} onChange={v => setExp(i, { summary: bullets(v).join('\n') })} placeholder="• What you did and the result, one bullet per line" />
+            <Tool del onClick={() => up({ experience: p.experience.filter((_, j) => j !== i) })}>Remove role</Tool></div>)}
+          <Tool onClick={() => up({ experience: [...p.experience, { title: '', company: '', start: '', end: '', summary: '' }] })}>+ Add role</Tool></section>;
+  const projSec = <section className={cn(!p.projects.length && 'no-print')}><h2>Projects</h2>
+          {p.projects.map((x, i) => <div key={i} className="r-item"><E tag="p" className="r-strong" value={x.name} onChange={v => setProj(i, { name: v })} placeholder="Project name" />
+            <E tag="p" multiline className="r-pre" value={x.description} onChange={v => setProj(i, { description: v })} placeholder="What it does and what you used" />
+            <Tool del onClick={() => up({ projects: p.projects.filter((_, j) => j !== i) })}>Remove project</Tool></div>)}
+          <Tool onClick={() => up({ projects: [...p.projects, { name: '', description: '', tech: [] }] })}>+ Add project</Tool></section>;
+  const eduSec = <section className={cn(!p.education.length && 'no-print')}><h2>Education</h2>
+          {p.education.map((e, i) => <div key={i} className="r-item"><p className="r-commas"><span className="r-c"><E className="r-strong" value={e.degree} onChange={v => setEdu(i, { degree: v })} placeholder="Degree" /></span><span className="r-c"><E value={e.institution} onChange={v => setEdu(i, { institution: v })} placeholder="College or university" /></span><span className="r-c"><E value={e.year} onChange={v => setEdu(i, { year: v })} placeholder="Year" /></span></p>
+            <Tool del onClick={() => up({ education: p.education.filter((_, j) => j !== i) })}>Remove</Tool></div>)}
+          <Tool onClick={() => up({ education: [...p.education, { degree: '', institution: '', year: '' }] })}>+ Add education</Tool></section>;
+  const certSec = <section className={cn(!p.certifications.length && 'no-print')}><h2>Certifications</h2><E tag="div" multiline className="r-pre" value={p.certifications.join('\n')} onChange={v => up({ certifications: v.split('\n').map(x => x.trim()).filter(Boolean) })} placeholder="One certification per line" /></section>;
 
   return <div className="view print-block grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
     <aside className="no-print min-w-0 space-y-5">
@@ -65,11 +90,13 @@ export default function ResumeView() {
           {c.tip && <p className="mt-1 text-xs text-mute">{c.tip}</p>}</li>)}</ul>
         <p className="text-xs text-mute">The score updates as you edit the resume on the right. It is an estimate of how parser-friendly the resume is, not the score of any particular company's ATS. About {ats.words} words.</p></Card>
 
-      <Card className="space-y-3"><h3 className="font-extrabold">Template</h3>
-        <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Template">{(Object.keys(TEMPLATES) as Template[]).map(t => <button key={t} type="button" role="radio" aria-checked={tpl === t} onClick={() => setTpl(t)}
-          className={cn('lift rounded-2xl border-2 p-2 text-center text-sm font-semibold transition-colors', tpl === t ? 'border-brand bg-brand-soft text-brand-ink' : 'border-line hover:border-brand')}>
-          <div className="tpl-thumb" aria-hidden><Preview p={p} tpl={t} /></div><span className="mt-2 block">{TEMPLATES[t]}{tpl === t && ' ✓'}</span></button>)}</div>
-        <p className="text-xs text-mute">Each preview is your own resume in that template. Click one to apply it. All are single-column with plain headings, which ATS parsers read most reliably.</p></Card>
+      <Card className="space-y-3"><h3 className="font-extrabold">Template <span className="font-medium text-mute">({TEMPLATE_DEFS.length})</span></h3>
+        <div role="tablist" aria-label="Template category" className="flex flex-wrap gap-1.5">{CATEGORIES.map(c => <button key={c} type="button" role="tab" aria-selected={cat === c} onClick={() => setCat(c)}
+          className={cn('rounded-full px-3 py-1.5 text-xs font-semibold transition-colors', cat === c ? 'bg-ink text-canvas' : 'bg-sunk text-mute hover:text-ink')}>{c}</button>)}</div>
+        <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Template">{TEMPLATE_DEFS.filter(d => d.category === cat).map(d => <button key={d.id} type="button" role="radio" aria-checked={tpl === d.id} aria-label={d.name} onClick={() => setTpl(d.id)}
+          className={cn('lift rounded-2xl border-2 p-2 text-center text-sm font-semibold transition-colors', tpl === d.id ? 'border-brand bg-brand-soft text-brand-ink' : 'border-line hover:border-brand')}>
+          <div className="tpl-thumb" aria-hidden><Preview p={p} def={d} /></div><span className="mt-2 block">{d.name}{tpl === d.id && ' ✓'}</span></button>)}</div>
+        <p className="text-xs text-mute">{cat === 'Two-column' ? 'Two-column designs look good to people, but some ATS software reads columns out of order. Use a single-column template when you apply through an online form. Word export is always single-column.' : 'Each preview is your own resume in that template. Click one to apply it. Single-column templates are what ATS parsers read most reliably.'}</p></Card>
 
       <Card className="space-y-3"><h3 className="font-extrabold">Save and download</h3>
         <Button variant="lime" className="w-full" disabled={busy || !dirty} onClick={() => saveProfile(p, st.prefs!)}>{dirty ? 'Save changes' : 'All changes saved'}</Button>
@@ -80,34 +107,12 @@ export default function ResumeView() {
     </aside>
 
     <div className="min-w-0"><p className="no-print mb-2 text-sm text-mute">Click any text on the page to edit it. Bullets: one per line.</p>
-      <article className={cn('resume-page', `tpl-${tpl}`)} aria-label="Resume">
+      <article className="resume-page" aria-label="Resume" {...paperProps(def)}>
         <header className="r-head"><E tag="h1" value={p.name} onChange={v => up({ name: v })} placeholder="Your name" />
           <E tag="p" className="r-role" value={p.currentDesignation} onChange={v => up({ currentDesignation: v })} placeholder="Job title" />
           <p className="r-contact"><span className="r-c"><E value={p.email} onChange={v => up({ email: v })} placeholder="Email" /></span><span className="r-c"><E value={p.phone} onChange={v => up({ phone: v })} placeholder="Phone" /></span><span className="r-c"><E value={p.location} onChange={v => up({ location: v })} placeholder="City" /></span></p></header>
-
-        <section className={cn(!p.summary && 'no-print')}><h2>Summary</h2><E tag="p" multiline className="r-pre" value={p.summary} onChange={v => up({ summary: v })} placeholder="Two or three lines on your experience, strengths and what you want next" /></section>
-        <section className={cn(!p.allSkills.length && 'no-print')}><h2>Skills</h2><E tag="p" multiline value={flatSkills(p).join(', ')} onChange={v => setSkills(lines(v))} placeholder="Skills separated by commas" /></section>
-
-        <section className={cn(!p.experience.length && 'no-print')}><h2>Experience</h2>
-          {p.experience.map((e, i) => <div key={i} className="r-item">
-            <p><span className="r-c"><E className="r-strong" value={e.title} onChange={v => setExp(i, { title: v })} placeholder="Job title" /></span><span className="r-c"><E className="r-strong" value={e.company} onChange={v => setExp(i, { company: v })} placeholder="Company" /></span></p>
-            <p className="r-dates"><E value={e.start} onChange={v => setExp(i, { start: v })} placeholder="Start (Jan 2020)" /> – <E value={e.end} onChange={v => setExp(i, { end: v })} placeholder="End or Present" /></p>
-            <E tag="div" multiline className="r-bullets" value={bullets(e.summary).map(b => `• ${b}`).join('\n')} onChange={v => setExp(i, { summary: bullets(v).join('\n') })} placeholder="• What you did and the result, one bullet per line" />
-            <Tool del onClick={() => up({ experience: p.experience.filter((_, j) => j !== i) })}>Remove role</Tool></div>)}
-          <Tool onClick={() => up({ experience: [...p.experience, { title: '', company: '', start: '', end: '', summary: '' }] })}>+ Add role</Tool></section>
-
-        <section className={cn(!p.projects.length && 'no-print')}><h2>Projects</h2>
-          {p.projects.map((x, i) => <div key={i} className="r-item"><E tag="p" className="r-strong" value={x.name} onChange={v => setProj(i, { name: v })} placeholder="Project name" />
-            <E tag="p" multiline className="r-pre" value={x.description} onChange={v => setProj(i, { description: v })} placeholder="What it does and what you used" />
-            <Tool del onClick={() => up({ projects: p.projects.filter((_, j) => j !== i) })}>Remove project</Tool></div>)}
-          <Tool onClick={() => up({ projects: [...p.projects, { name: '', description: '', tech: [] }] })}>+ Add project</Tool></section>
-
-        <section className={cn(!p.education.length && 'no-print')}><h2>Education</h2>
-          {p.education.map((e, i) => <div key={i} className="r-item"><p className="r-commas"><span className="r-c"><E className="r-strong" value={e.degree} onChange={v => setEdu(i, { degree: v })} placeholder="Degree" /></span><span className="r-c"><E value={e.institution} onChange={v => setEdu(i, { institution: v })} placeholder="College or university" /></span><span className="r-c"><E value={e.year} onChange={v => setEdu(i, { year: v })} placeholder="Year" /></span></p>
-            <Tool del onClick={() => up({ education: p.education.filter((_, j) => j !== i) })}>Remove</Tool></div>)}
-          <Tool onClick={() => up({ education: [...p.education, { degree: '', institution: '', year: '' }] })}>+ Add education</Tool></section>
-
-        <section className={cn(!p.certifications.length && 'no-print')}><h2>Certifications</h2><E tag="div" multiline className="r-pre" value={p.certifications.join('\n')} onChange={v => up({ certifications: v.split('\n').map(x => x.trim()).filter(Boolean) })} placeholder="One certification per line" /></section>
+        {def.layout === 'single' ? <>{summarySec}{skillsSec}{expSec}{projSec}{eduSec}{certSec}</>
+          : <div className="r-cols">{def.layout === 'left' ? <><div className="r-side">{skillsSec}{eduSec}{certSec}</div><div className="r-main">{summarySec}{expSec}{projSec}</div></> : <><div className="r-main">{summarySec}{expSec}{projSec}</div><div className="r-side">{skillsSec}{eduSec}{certSec}</div></>}</div>}
       </article></div>
   </div>;
 }

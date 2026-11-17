@@ -144,20 +144,31 @@ await test('ATS section: score, edit on the template, switch template, download 
   const edit = async (label, text) => { const f = page.getByRole('textbox', { name: label, exact: true }).first(); await f.click(); await page.keyboard.press('Control+A'); await page.keyboard.type(text); await f.blur(); };
   await edit('Phone', '+91 98765 43210'); await edit('Your name', 'Asha R Rao');
   await page.waitForFunction(b => +document.querySelector('[aria-label$="percent match"]').getAttribute('aria-label').split(' ')[0] > b, before); // score rises live
-  assert.equal(await page.getByRole('radio').count(), 6);
-  for (const t of ['Banner', 'Elegant', 'Compact', 'Minimal', 'Classic', 'Modern']) { await page.getByRole('radio', { name: t }).click(); await page.waitForSelector(`article.tpl-${t.toLowerCase()}`); } // clicking a preview applies it
+  const pick = async (cat, name) => { await page.getByRole('tab', { name: cat }).click(); await page.getByRole('radio', { name, exact: true }).click(); };
+  let total = 0;
+  for (const cat of ['Simple', 'Modern', 'Bold header', 'Two-column']) {                                     // every preview applies its template when clicked
+    await page.getByRole('tab', { name: cat }).click(); const n = await page.getByRole('radio').count(); assert.ok(n >= 6, `${cat}: ${n}`); total += n;
+    for (let i = 0; i < n; i++) { const r = page.getByRole('radio').nth(i); await r.click(); assert.equal(await r.getAttribute('aria-checked'), 'true'); assert.equal(await page.locator('article [role=textbox]').first().innerText(), 'Asha R Rao'); }
+  }
+  assert.ok(total >= 24, `templates: ${total}`);
+  await pick('Bold header', 'Banner'); await page.waitForSelector('article[data-tpl="banner"][data-head="band"]');
   assert.match(await page.getByRole('radio', { name: 'Banner' }).locator('.tpl-thumb').innerText(), /Asha R Rao/);  // previews show your own resume
-  assert.equal(await page.locator('article.tpl-modern h1').innerText(), 'Asha R Rao');                       // edits survive a template switch
+  await pick('Two-column', 'Sidebar'); await page.waitForSelector('article[data-layout="left"] .r-cols .r-side');
+  const box = async sel => page.locator(sel).boundingBox(); const sideBox = await box('article .r-side'), mainBox = await box('article .r-main');
+  assert.ok(sideBox.x + sideBox.width <= mainBox.x + 1, 'sidebar sits to the left of the main column');
+  const sidePdf = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ja-')), 'sidebar.pdf'); fs.writeFileSync(sidePdf, await page.pdf({ format: 'A4', printBackground: true }));
+  if (process.env.KEEP_EXPORTS) { for (const [c, n] of [['Two-column', 'Navy column'], ['Two-column', 'Lilac'], ['Bold header', 'Emerald'], ['Modern', 'Slate']]) { await pick(c, n); await page.locator('article').screenshot({ path: path.join(process.env.KEEP_EXPORTS, n.replace(' ', '-') + '.png') }); } await page.getByRole('tab', { name: 'Two-column' }).click(); await page.locator('[role=radiogroup]').screenshot({ path: path.join(process.env.KEEP_EXPORTS, 'thumbs.png') }); fs.copyFileSync(sidePdf, path.join(process.env.KEEP_EXPORTS, 'sidebar.pdf')); }
+  await pick('Modern', 'Modern'); await page.waitForSelector('article[data-tpl="modern"]');
+  assert.equal(await page.locator('article h1').innerText(), 'Asha R Rao');                                  // edits survive template switches
 
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("Download Word")')]);
   assert.equal(dl.suggestedFilename(), 'Asha_R_Rao.docx');
   const docx = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ja-')), 'out.docx'); await dl.saveAs(docx);
   const pdf = docx.replace('.docx', '.pdf'); fs.writeFileSync(pdf, await page.pdf({ format: 'A4' }));
-  if (process.env.KEEP_EXPORTS) { await page.getByRole('radio', { name: 'Banner' }).click(); await page.screenshot({ path: path.join(process.env.KEEP_EXPORTS, 'banner.png') }); fs.writeFileSync(path.join(process.env.KEEP_EXPORTS, 'banner.pdf'), await page.pdf({ format: 'A4', printBackground: true })); await page.getByRole('radio', { name: 'Modern' }).click(); }
   if (process.env.KEEP_EXPORTS) { fs.copyFileSync(docx, path.join(process.env.KEEP_EXPORTS, 'out.docx')); fs.copyFileSync(pdf, path.join(process.env.KEEP_EXPORTS, 'out.pdf')); await page.screenshot({ path: path.join(process.env.KEEP_EXPORTS, 'resume.png') }); }
 
   await page.click('button:has-text("Save changes")'); await toast(page).filter({ hasText: 'Profile confirmed' }).waitFor();
-  for (const f of [docx, pdf]) {                                                                            // what we export can be uploaded again
+  for (const f of [docx, pdf, sidePdf]) {                                                                            // what we export can be uploaded again
     await page.setInputFiles('#resume', f); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
     await page.goto(BASE + '#/resume'); await page.waitForSelector('article.resume-page');
     assert.equal(await page.locator('article h1').innerText(), 'Asha R Rao', f); assert.match(await page.locator('article .r-contact').innerText(), /98765/, f);

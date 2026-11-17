@@ -3,25 +3,21 @@
 import JSZip from 'jszip';
 import { bullets, flatSkills } from '../../engine/ats.ts';
 import type { Profile } from '../../engine/types.ts';
+import { FONTS, type TemplateDef } from './templates.ts';
 
-export const TEMPLATES = { classic: 'Classic', modern: 'Modern', banner: 'Banner', elegant: 'Elegant', compact: 'Compact', minimal: 'Minimal' } as const;
-export type Template = keyof typeof TEMPLATES;
-const STYLE: Record<Template, { font: string; color: string; size: number; center?: boolean; rule: boolean; band?: string }> = {
-  banner: { font: 'Arial', color: '1F2A44', size: 21, rule: true, band: '1F2A44' }, elegant: { font: 'Garamond', color: '7A5C2E', size: 22, center: true, rule: false },
-  classic: { font: 'Georgia', color: '111111', size: 21, center: true, rule: true }, modern: { font: 'Arial', color: '4B32C3', size: 21, rule: true },
-  compact: { font: 'Calibri', color: '111111', size: 19, rule: false }, minimal: { font: 'Arial', color: '555555', size: 21, rule: false },
-};
+const styleOf = (d: TemplateDef) => ({ font: FONTS[d.font][1], color: d.accent.slice(1).toUpperCase(), size: d.small ? 19 : 21, center: d.head === 'center', rule: d.heading === 'rule', band: d.head === 'band' ? d.accent.slice(1).toUpperCase() : undefined });
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
 
-export async function buildDocx(p: Profile, template: Template): Promise<Blob> {
-  const st = STYLE[template];
+/** Word export is always single-column (two-column templates keep their font, colours and header, in one column) so any ATS can read it. */
+export async function buildDocx(p: Profile, def: TemplateDef): Promise<Blob> {
+  const st = styleOf(def), light = def.heading === 'plain' || def.heading === 'caps';
   const para = (text: string, o: { bold?: boolean; size?: number; color?: string; center?: boolean; before?: number; rule?: boolean; fill?: string } = {}) =>
     `<w:p><w:pPr>${o.rule ? `<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="${st.color}"/></w:pBdr>` : ''}${o.fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${o.fill}"/>` : ''}<w:spacing w:before="${o.before ?? 0}" w:after="60"/>${o.center ? '<w:jc w:val="center"/>' : ''}</w:pPr>` +
     `<w:r><w:rPr><w:rFonts w:ascii="${st.font}" w:hAnsi="${st.font}" w:cs="${st.font}"/>${o.bold ? '<w:b/>' : ''}<w:color w:val="${o.color ?? '111111'}"/><w:sz w:val="${o.size ?? st.size}"/></w:rPr><w:t xml:space="preserve">${esc(text)}</w:t></w:r></w:p>`;
-  const head = (t: string) => para(t.toUpperCase(), { bold: true, size: st.size + 1, color: st.color, before: 240, rule: st.rule, center: template === 'elegant' });
+  const head = (t: string) => para(t.toUpperCase(), { bold: true, size: st.size + 1, color: st.color, before: 240, rule: st.rule, center: def.heading === 'caps' });
   const band = st.band ? { fill: st.band, color: 'FFFFFF' } : {}; // header band: shaded paragraphs, still plain text
   const body: string[] = [];
-  if (p.name) body.push(para(p.name, { bold: template !== 'minimal' && template !== 'elegant', size: 44, color: st.color, center: st.center, ...band }));
+  if (p.name) body.push(para(p.name, { bold: !light, size: 44, color: st.color, center: st.center, ...band }));
   if (p.currentDesignation) body.push(para(p.currentDesignation, { size: st.size + 3, center: st.center, ...band }));
   const contact = [p.email, p.phone, p.location].filter(Boolean).join(' | ');
   if (contact) body.push(para(contact, { color: '333333', center: st.center, ...band }));

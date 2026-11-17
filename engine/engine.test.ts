@@ -261,3 +261,12 @@ test('a "Career Objective" heading (any spelling, plural, letter-spaced, or with
   assert.equal(parseLocal(TRICKY.oneWord).name, 'Keerthivasan'); // one-word name, confirmed by the email address
   for (const t of ['Career Objective\nTo get a job', 'OBJECTIVE\nx', 'Professional Summary\nx', 'Resume\nCurriculum Vitae']) assert.equal(parseLocal(t).name, '', t);
 });
+test('a college, company, degree or address line is never taken as the name; the email address picks the right line', () => {
+  const collegeFirst = `PSG College Of Technology\nDepartment Of Computer Science\nKeerthi Vasan\nkeerthivasan17072000@example.com | 9876543210\nSkills\nReact`;
+  assert.equal(parseLocal(collegeFirst).name, 'Keerthi Vasan');
+  const noEmail = `Anna University\nRavi Shankar\nChennai\nSkills\nJava`;
+  assert.equal(parseLocal(noEmail).name, 'Ravi Shankar');
+  const late = `Sri Krishna Arts And Science College\nCoimbatore\nObjective\nTo learn and grow.\nEducation\nB.Sc Computer Science, Sri Krishna Arts And Science College, 2021\nInfosys Limited\nSystems Engineer  2021 - Present\nPersonal Details\nDivya Lakshmi\ndivyalakshmi.r@example.com`;
+  const p = parseLocal(late, new Date('2024-06-01')); assert.equal(p.name, 'Divya Lakshmi');
+  for (const t of ['Anna University\nSkills\nJava', 'Tata Consultancy Services\nx', 'Bachelor Of Engineering\nx', 'Gandhi Nagar Main Road\nx', 'Vellore Institute Of Technology\nx']) assert.equal(parseLocal(t).name, '', t);
+});

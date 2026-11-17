@@ -125,14 +125,17 @@ export function parseLocal(text: string, now = new Date()): Profile {
   // name: a "Name:" label wins; otherwise the best short capitalised line near the top that is not a heading, title, place or contact detail
   const labelled = /^\s*(?:full\s+)?name\s*[:\-–]\s*([A-Za-z][A-Za-z.' ]{1,40}?)\s*$/im.exec(text)?.[1]?.trim();
   const NOT_NAME = /resume|curriculum|vitae|\bcv\b|bio-?data|objective|summary|profile|experience|education|skills?|declaration|personal|details|contact|career|carrier|address|e-?mail|mobile|phone|linkedin|github|portfolio|www|http|@|\d|india\b/i;
+  // colleges, companies, degrees and street addresses are capitalised short lines too, and are the usual wrong guesses
+  const ORG = /universit|college|institut|school|academy|polytechnic|vidyalaya|engineering|technolog|science|arts\b|commerce|management|studies|department|faculty|campus|solutions|services|systems|software|consult|enterprises?|industries|group|labs?\b|pvt|ltd|limited|\binc\b|llp|corp|company|bank|hospital|bachelor|master|diploma|degree|b\.?\s?tech|m\.?\s?tech|\bb\.?e\b|\bmba\b|nagar|street|road|colony|district|taluk|post\b|state\b|pin\s?code/i;
   const local = email.split('@')[0].toLowerCase().replace(/[^a-z]/g, '');
   let name = labelled ?? '', best = 0;
-  if (!name) lines.slice(0, 15).forEach((raw, i) => {
+  if (!name) lines.slice(0, 80).forEach((raw, i) => {
     const piece = clean(despace(raw)).split(/\s*[|•·,/]\s*|\s{3,}|\s+-\s+/)[0].trim(), tok = piece.split(/\s+/);
-    if (tok.length > 4 || piece.length < 3 || piece.length > 40 || !tok.every(t => /^[A-Z][A-Za-z.'-]*$/.test(t)) || NOT_NAME.test(piece) || TITLE_WORDS.test(piece) || headingOf(piece) || CITIES.includes(piece.toLowerCase())) return;
-    const first = tok.map(t => t.toLowerCase().replace(/[^a-z]/g, '')).find(t => t.length >= 3) ?? '';
-    const inEmail = !!first && local.length >= 3 && (local.includes(first) || first.includes(local));
-    const score = (inEmail ? 4 : 0) + (i <= 2 ? 2 : i <= 6 ? 1 : 0) + (tok.length >= 2 ? 2 : 0);
+    if (tok.length > 4 || piece.length < 3 || piece.length > 40 || !tok.every(t => /^[A-Z][A-Za-z.'-]*$/.test(t)) || NOT_NAME.test(piece) || ORG.test(piece) || EDU.test(piece) || TITLE_WORDS.test(piece) || headingOf(piece) || CITIES.includes(piece.toLowerCase())) return;
+    const parts = tok.map(t => t.toLowerCase().replace(/[^a-z]/g, '')).filter(t => t.length >= 3);
+    const inEmail = local.length >= 3 && parts.some(t => local.includes(t) || t.includes(local)); // "keerthivasan17@" vouches for "Keerthi Vasan S"
+    if (i >= 15 && !inEmail) return; // far from the top, only the email address can vouch for a line
+    const score = (inEmail ? 6 : 0) + (i <= 2 ? 2 : i <= 6 ? 1 : 0) + (tok.length >= 2 ? 2 : 0);
     if (score >= 3 && score > best) { best = score; name = piece; } // a single word needs the email or the very top of the page to vouch for it
   });
 
