@@ -1,6 +1,6 @@
 // Resume templates are data: a layout, a header style, a heading style, a font and an accent colour.
 // The CSS in index.css renders them from data attributes, so adding a template is one line here.
-export const CATEGORIES = ['Simple', 'Modern', 'Bold header', 'Two-column'] as const;
+export const CATEGORIES = ['Simple', 'Modern', 'Bold header', 'Two-column', 'With photo'] as const;
 export const FONTS = {
   georgia: ["Georgia, 'Times New Roman', serif", 'Georgia'], arial: ['Arial, Helvetica, sans-serif', 'Arial'], calibri: ["Calibri, 'Segoe UI', Arial, sans-serif", 'Calibri'],
   garamond: ["Garamond, 'Times New Roman', serif", 'Garamond'], courier: ["'Courier New', Courier, monospace", 'Courier New'], trebuchet: ["'Trebuchet MS', Arial, sans-serif", 'Trebuchet MS'], verdana: ['Verdana, Arial, sans-serif', 'Verdana'],
@@ -10,7 +10,7 @@ export interface TemplateDef {
   layout: 'single' | 'left' | 'right';                         // where the sidebar sits, if any
   head: 'left' | 'center' | 'split' | 'band';
   heading: 'rule' | 'plain' | 'bar' | 'caps' | 'pill' | 'side';
-  font: keyof typeof FONTS; accent: string; side?: 'tint' | 'dark' | 'line'; small?: boolean;
+  font: keyof typeof FONTS; accent: string; side?: 'tint' | 'dark' | 'line'; small?: boolean; photo?: 'round' | 'square';
 }
 const t = (id: string, name: string, category: TemplateDef['category'], layout: TemplateDef['layout'], head: TemplateDef['head'], heading: TemplateDef['heading'], font: TemplateDef['font'], accent: string, extra: Partial<TemplateDef> = {}): TemplateDef =>
   ({ id, name, category, layout, head, heading, font, accent, ...extra });
@@ -44,10 +44,21 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
   t('burgundy', 'Burgundy', 'Two-column', 'left', 'center', 'caps', 'georgia', '#7f1d1d', { side: 'line' }),
   t('graphite', 'Graphite', 'Two-column', 'left', 'band', 'pill', 'verdana', '#374151', { side: 'dark', small: true }),
   t('mint', 'Mint', 'Two-column', 'right', 'band', 'bar', 'arial', '#047857', { side: 'tint' }),
+
+  t('portrait', 'Portrait', 'With photo', 'single', 'left', 'rule', 'arial', '#1f2a44', { photo: 'round' }),
+  t('profile-band', 'Profile band', 'With photo', 'single', 'band', 'bar', 'trebuchet', '#0f766e', { photo: 'round' }),
+  t('centered-photo', 'Centered', 'With photo', 'single', 'center', 'caps', 'georgia', '#7f1d1d', { photo: 'round' }),
+  t('square-photo', 'Square', 'With photo', 'single', 'left', 'side', 'calibri', '#1d4ed8', { photo: 'square' }),
+  t('profile-card', 'Profile card', 'With photo', 'left', 'left', 'rule', 'arial', '#6d28d9', { side: 'tint', photo: 'round' }),
+  t('studio', 'Studio', 'With photo', 'left', 'band', 'rule', 'verdana', '#111827', { side: 'dark', photo: 'square', small: true }),
+  t('coral', 'Coral', 'With photo', 'right', 'band', 'pill', 'arial', '#be123c', { side: 'tint', photo: 'round' }),
 ];
 export const templateById = (id: string | null) => TEMPLATE_DEFS.find(d => d.id === id) ?? TEMPLATE_DEFS[0];
 /** Attributes and CSS variables that make a .resume-page render as this template. */
 export const paperProps = (d: TemplateDef) => ({
-  'data-tpl': d.id, 'data-layout': d.layout, 'data-head': d.head, 'data-heading': d.heading, 'data-side': d.side ?? 'none',
+  'data-tpl': d.id, 'data-layout': d.layout, 'data-head': d.head, 'data-heading': d.heading, 'data-side': d.side ?? 'none', 'data-photo': d.photo ?? 'none',
   style: { '--accent': d.accent, '--font': FONTS[d.font][0], '--fs': d.small ? '9.5pt' : '10.5pt' } as React.CSSProperties,
 });
+/** What the ATS check needs to know about a template. */
+export const atsLayout = (d: TemplateDef) => ({ twoColumn: d.layout !== 'single', photo: !!d.photo });
+export const atsSafe = (d: TemplateDef) => d.layout === 'single' && !d.photo;

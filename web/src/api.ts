@@ -17,7 +17,7 @@ export type { Job, LogEntry, Prefs, Profile, Status };
 export { STATUSES };
 export interface Run { adapter: string; name: string; status: string; reason: string; found: number; checked_at: string; cached?: boolean; added?: number; duplicate?: number }
 export interface PortalResult { portal: string; name: string; found: number; added: number; duplicate: number; blocked?: string; error?: string }
-export interface State { resumeText: string; slot: store.Slot; slots: store.Slot[]; profile: Profile | null; prefs: Prefs | null; jobs: Job[]; runs: Run[]; logs: LogEntry[]; lastSearch: string; queries: string[] }
+export interface State { photo: string; resumeText: string; slot: store.Slot; slots: store.Slot[]; profile: Profile | null; prefs: Prefs | null; jobs: Job[]; runs: Run[]; logs: LogEntry[]; lastSearch: string; queries: string[] }
 export const SOURCES = [careerPages, ...apiSources];
 export { PORTALS };
 
@@ -82,9 +82,9 @@ export const api = {
   },
 
   state: async (): Promise<State> => {
-    const [slots, profile, prefs, jobs, runs, logs, lastSearch, resumeText] = await Promise.all([store.slots(), readProfile(), readPrefs(), readJobs(), store.get<Run[]>('runs'), store.get<LogEntry[]>('logs'), store.get<string>('lastSearch'), store.get<string>('resumeText')]);
+    const [slots, profile, prefs, jobs, runs, logs, lastSearch, resumeText, photo] = await Promise.all([store.slots(), readProfile(), readPrefs(), readJobs(), store.get<Run[]>('runs'), store.get<LogEntry[]>('logs'), store.get<string>('lastSearch'), store.get<string>('resumeText'), store.get<string>('photo')]);
     const slot = slots.find(s => s.id === store.slotId()) ?? slots[0];
-    return { resumeText: resumeText ?? '', slot, slots, profile: profile ?? null, prefs: prefs ?? null, jobs: (jobs ?? []).sort((a, b) => b.score - a.score || b.firstSeen.localeCompare(a.firstSeen)), runs: runs ?? [], logs: logs ?? [], lastSearch: lastSearch ?? '',
+    return { photo: photo ?? '', resumeText: resumeText ?? '', slot, slots, profile: profile ?? null, prefs: prefs ?? null, jobs: (jobs ?? []).sort((a, b) => b.score - a.score || b.firstSeen.localeCompare(a.firstSeen)), runs: runs ?? [], logs: logs ?? [], lastSearch: lastSearch ?? '',
       queries: profile && prefs ? buildQueries(profile, prefs) : [] };
   },
 
@@ -101,6 +101,7 @@ export const api = {
     // A new resume means a new search: roles and locations come from THIS resume (other settings are kept), and jobs found for the
     // previous resume are dropped. Jobs you saved or moved past "New" are kept and rescored against the new profile.
     const previous = await readProfile();
+    if (previous && previous.name !== profile.name) await store.set('photo', ''); // a different person's resume must not keep the old photo
     await store.set('profile', profile); await store.set('resumeText', text.slice(0, 60000));
     await store.set('prefs', { ...DEFAULT_PREFS, ...old, roles: profile.targetRoles, locations: profile.location ? [profile.location] : [] } satisfies Prefs);
     const keep = (await readJobs()).filter(j => j.saved || j.status !== 'new');
@@ -194,6 +195,17 @@ export const api = {
     const run: Run = { adapter: portal.id, name: portal.name, status: r.blocked ? 'blocked' : r.error ? 'error' : 'ok', reason: r.blocked ?? r.error ?? `Read ${raws.length} listings through your browser.`, found: raws.length, checked_at: new Date().toISOString(), added: counts.added, duplicate: counts.duplicate };
     await store.set('runs', [...((await store.get<Run[]>('runs')) ?? []).filter(x => x.adapter !== portal.id), run]);
     return { portal: portal.id, name: portal.name, found: raws.length, added: counts.added, duplicate: counts.duplicate, blocked: r.blocked, error: r.error };
+  },
+
+  /** Profile photo for photo templates: cropped square, at most 320px, stored only in this browser. '' removes it. */
+  setPhoto: async (file: File | null) => {
+    if (!file) return store.set('photo', '');
+    if (!file.type.startsWith('image/')) throw new Error('Choose an image file (JPG or PNG).');
+    if (file.size > 8 * 1024 * 1024) throw new Error('That image is larger than 8 MB.');
+    const bmp = await createImageBitmap(file).catch(() => { throw new Error('That image could not be read.'); });
+    const side = Math.min(bmp.width, bmp.height), c = Object.assign(document.createElement('canvas'), { width: 320, height: 320 });
+    c.getContext('2d')!.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 320, 320);
+    await store.set('photo', c.toDataURL('image/jpeg', 0.86));
   },
 
   updateJob: async (id: string, patch: Partial<Pick<Job, 'status' | 'saved' | 'notes'>>) => {

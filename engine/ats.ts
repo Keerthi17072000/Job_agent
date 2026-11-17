@@ -23,7 +23,8 @@ export function resumeText(p: Profile): string {
 export interface AtsCheck { id: string; label: string; got: number; max: number; tip: string }
 export interface AtsResult { score: number; checks: AtsCheck[]; missingKeywords: string[]; words: number }
 
-export function atsScore(p: Profile, jobs: Pick<Job, 'requiredSkills' | 'score'>[] = []): AtsResult {
+/** `layout` describes the chosen template: columns and photos change how reliably ATS software reads a resume. */
+export function atsScore(p: Profile, jobs: Pick<Job, 'requiredSkills' | 'score'>[] = [], layout?: { twoColumn: boolean; photo: boolean }): AtsResult {
   const checks: AtsCheck[] = [];
   const add = (id: string, label: string, got: number, max: number, tip: string) => checks.push({ id, label, got: Math.round(got * 10) / 10, max, tip: got >= max ? '' : tip });
 
@@ -47,6 +48,10 @@ export function atsScore(p: Profile, jobs: Pick<Job, 'requiredSkills' | 'score'>
 
   const words = resumeText(p).split(/\s+/).filter(Boolean).length;
   add('length', 'Length', words >= 250 && words <= 1000 ? 10 : words >= 150 && words <= 1400 ? 5 : 0, 10, words < 250 ? `About ${words} words is thin. Aim for 250 to 1000.` : `About ${words} words is long. Aim for 250 to 1000 (1 to 2 pages).`);
+
+  if (layout) add('template', 'Template layout', layout.twoColumn ? (layout.photo ? 2 : 4) : layout.photo ? 6 : 10, 10,
+    layout.twoColumn ? `Two-column layouts${layout.photo ? ' and photos' : ''} are often read out of order or skipped by ATS software. Use a single-column template without a photo for online applications.`
+      : 'Many ATS systems cannot read a photo and some employers discard resumes that have one. Use a template without a photo for online applications.');
 
   // keywords: skills most often required by the jobs you matched, when there are enough jobs to say anything
   const pool = jobs.filter(j => j.requiredSkills.length);

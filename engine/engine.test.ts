@@ -270,3 +270,11 @@ test('a college, company, degree or address line is never taken as the name; the
   const p = parseLocal(late, new Date('2024-06-01')); assert.equal(p.name, 'Divya Lakshmi');
   for (const t of ['Anna University\nSkills\nJava', 'Tata Consultancy Services\nx', 'Bachelor Of Engineering\nx', 'Gandhi Nagar Main Road\nx', 'Vellore Institute Of Technology\nx']) assert.equal(parseLocal(t).name, '', t);
 });
+
+test('ATS template check: single column without a photo scores best, two columns with a photo worst', () => {
+  const p = normalizeProfile({ name: 'A' });
+  const got = (twoColumn: boolean, photo: boolean) => atsScore(p, [], { twoColumn, photo }).checks.find(c => c.id === 'template')!;
+  assert.deepEqual([got(false, false).got, got(false, true).got, got(true, false).got, got(true, true).got], [10, 6, 4, 2]);
+  assert.equal(got(false, false).tip, ''); assert.match(got(true, false).tip, /single-column/); assert.match(got(false, true).tip, /photo/);
+  assert.equal(atsScore(p).checks.some(c => c.id === 'template'), false);
+});

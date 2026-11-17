@@ -1,7 +1,8 @@
-import { createElement, useEffect, useMemo, useState } from 'react';
+import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import { atsScore, bullets, flatSkills } from '../../../engine/ats.ts';
 import { buildDocx } from '../docx.ts';
-import { CATEGORIES, TEMPLATE_DEFS, paperProps, templateById, type TemplateDef } from '../templates.ts';
+import { CATEGORIES, TEMPLATE_DEFS, atsLayout, atsSafe, paperProps, templateById, type TemplateDef } from '../templates.ts';
+import { api } from '../api.ts';
 import { Badge, Button, Card, ScoreRing, cn } from '../ui.tsx';
 import { useApp } from '../state.tsx';
 import { ReplaceResume, UploadCard, lines } from './common.tsx';
@@ -18,7 +19,7 @@ function E({ value, onChange, placeholder, className, tag = 'span', multiline }:
 }
 
 /** Read-only render of the resume in a template, used for the template thumbnails. */
-function Preview({ p, def }: { p: Profile; def: TemplateDef }) {
+function Preview({ p, def, photo }: { p: Profile; def: TemplateDef; photo: string }) {
   const summary = <section><h2>Summary</h2><p>{p.summary || 'Two or three lines about your experience and strengths.'}</p></section>;
   const skills = <section><h2>Skills</h2><p>{flatSkills(p).join(', ') || 'Your skills'}</p></section>;
   const exp = <section><h2>Experience</h2>{(p.experience.length ? p.experience : [{ title: 'Job title', company: 'Company', start: 'Start', end: 'End', summary: 'What you did and the result' }]).slice(0, 3).map((e, i) => <div key={i} className="r-item">
@@ -26,7 +27,8 @@ function Preview({ p, def }: { p: Profile; def: TemplateDef }) {
   const edu = <section><h2>Education</h2>{(p.education.length ? p.education : [{ degree: 'Degree', institution: 'University', year: 'Year' }]).map((e, i) => <p key={i}>{[e.degree, e.institution, e.year].filter(Boolean).join(', ')}</p>)}</section>;
   const side = <div className="r-side">{skills}{edu}</div>, main = <div className="r-main">{summary}{exp}</div>;
   return <div className="resume-page" {...paperProps(def)}>
-    <div className="r-head"><h1>{p.name || 'Your Name'}</h1><p className="r-role">{p.currentDesignation || 'Job title'}</p><p className="r-contact">{[p.email || 'email@example.com', p.phone || 'phone', p.location || 'city'].map(x => <span key={x} className="r-c">{x}</span>)}</p></div>
+    <div className={cn('r-head', def.photo && 'has-photo')}>{def.photo && (photo ? <img className="r-photo" src={photo} alt="" /> : <span className="r-photo">Photo</span>)}
+      <div className="r-ht"><h1>{p.name || 'Your Name'}</h1><p className="r-role">{p.currentDesignation || 'Job title'}</p><p className="r-contact">{[p.email || 'email@example.com', p.phone || 'phone', p.location || 'city'].map(x => <span key={x} className="r-c">{x}</span>)}</p></div></div>
     {def.layout === 'single' ? <>{summary}{skills}{exp}{edu}</> : <div className="r-cols">{def.layout === 'left' ? <>{side}{main}</> : <>{main}{side}</>}</div>}
   </div>;
 }
@@ -34,17 +36,23 @@ function Preview({ p, def }: { p: Profile; def: TemplateDef }) {
 const download = (blob: Blob, name: string) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
 
 export default function ResumeView() {
-  const { st, saveProfile, busy, setMsg } = useApp();
+  const { st, saveProfile, busy, setMsg, load } = useApp();
   const [p, setP] = useState<Profile | null>(null);
   const [tpl, setTplState] = useState(() => { try { return templateById(localStorage.getItem('ja.template')).id; } catch { return TEMPLATE_DEFS[0].id; } });
   const def = templateById(tpl);
   const [cat, setCat] = useState(def.category);
-  useEffect(() => { if (st?.profile) setP(st.profile); }, [st?.profile]);
-  const ats = useMemo(() => (p ? atsScore(p, st?.jobs ?? []) : null), [p, st?.jobs]);
+  // Reload the editable copy only when the SAVED profile really changed (new upload, save). Other reloads, such as adding a photo, must not discard unsaved edits.
+  const saved = useRef('');
+  useEffect(() => { if (!st?.profile) return; const j = JSON.stringify(st.profile); if (j !== saved.current) { saved.current = j; setP(st.profile); } }, [st?.profile]);
+  const ats = useMemo(() => (p ? atsScore(p, st?.jobs ?? [], atsLayout(def)) : null), [p, st?.jobs, def]);
   if (!st) return null;
   if (!p || !ats || !st.prefs) return <div className="view mx-auto max-w-2xl space-y-5 py-8 text-center"><h2 className="text-2xl font-extrabold">Check your resume's ATS score</h2>
     <p className="text-mute">Upload a resume to see how well applicant-tracking software can read it, fix it right on the page, pick a template and download it as PDF or Word.</p><UploadCard big /></div>;
 
+  const setPhoto = async (f: File | null) => { try { await api.setPhoto(f); await load(); setMsg(f ? 'Photo added.' : 'Photo removed.'); } catch (e) { setMsg((e as Error).message); } };
+  // one ATS-friendly template is always suggested, chosen from the resume itself
+  const suggested = templateById(ats.words > 650 ? 'compact' : p.totalExperienceYears < 2 ? 'modern' : 'classic');
+  const suggestWhy = ats.words > 650 ? 'Your resume is long; Compact fits more on a page in a single column that ATS software reads in order.' : p.totalExperienceYears < 2 ? 'A clean single-column layout with clear headings suits an early-career resume and is read reliably by ATS software.' : 'A traditional single-column layout with standard headings is the safest choice for ATS software.';
   const setTpl = (t: string) => { setTplState(t); try { localStorage.setItem('ja.template', t); } catch { /* storage blocked: choice just will not persist */ } };
   const up = (patch: Partial<Profile>) => setP({ ...p, ...patch });
   const setSkills = (list: string[]) => { // keep each skill in its category; new ones go to "other"
@@ -90,13 +98,25 @@ export default function ResumeView() {
           {c.tip && <p className="mt-1 text-xs text-mute">{c.tip}</p>}</li>)}</ul>
         <p className="text-xs text-mute">The score updates as you edit the resume on the right. It is an estimate of how parser-friendly the resume is, not the score of any particular company's ATS. About {ats.words} words.</p></Card>
 
+      <Card className="space-y-3 border-2 border-lime"><h3 className="font-extrabold">Suggested template for ATS</h3>
+        {atsSafe(def) ? <p className="text-sm"><b>{def.name}</b> is already ATS-friendly: single column, no photo, standard headings.</p>
+          : <><div className="flex items-center gap-3"><div className="tpl-thumb shrink-0" style={{ margin: 0 }} aria-hidden><Preview p={p} def={suggested} photo="" /></div>
+              <div className="space-y-2 text-sm"><p><b>{suggested.name}</b> would raise your ATS score by {10 - (ats.checks.find(c => c.id === 'template')?.got ?? 10)} points.</p><p className="text-xs text-mute">{suggestWhy}</p>
+                <Button variant="lime" className="h-9" onClick={() => { setTpl(suggested.id); setCat(suggested.category); }}>Use {suggested.name}</Button></div></div></>}</Card>
+
+      {def.photo && <Card className="space-y-3"><h3 className="font-extrabold">Profile photo</h3>
+        <input id="photo" type="file" accept="image/*" className="sr-only" aria-label="Profile photo" onChange={e => { void setPhoto(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+        <div className="flex flex-wrap gap-2"><label htmlFor="photo" className="inline-flex h-10 cursor-pointer items-center rounded-full bg-ink px-5 text-sm font-semibold text-canvas focus-within:outline-2">{st.photo ? 'Change photo' : 'Upload photo'}</label>
+          {st.photo && <Button variant="outline" onClick={() => setPhoto(null)}>Remove photo</Button>}</div>
+        <p className="text-xs text-mute">JPG or PNG. It is cropped to a square and kept only in this browser. It appears in the PDF, not in the Word file.</p></Card>}
+
       <Card className="space-y-3"><h3 className="font-extrabold">Template <span className="font-medium text-mute">({TEMPLATE_DEFS.length})</span></h3>
         <div role="tablist" aria-label="Template category" className="flex flex-wrap gap-1.5">{CATEGORIES.map(c => <button key={c} type="button" role="tab" aria-selected={cat === c} onClick={() => setCat(c)}
           className={cn('rounded-full px-3 py-1.5 text-xs font-semibold transition-colors', cat === c ? 'bg-ink text-canvas' : 'bg-sunk text-mute hover:text-ink')}>{c}</button>)}</div>
         <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Template">{TEMPLATE_DEFS.filter(d => d.category === cat).map(d => <button key={d.id} type="button" role="radio" aria-checked={tpl === d.id} aria-label={d.name} onClick={() => setTpl(d.id)}
           className={cn('lift rounded-2xl border-2 p-2 text-center text-sm font-semibold transition-colors', tpl === d.id ? 'border-brand bg-brand-soft text-brand-ink' : 'border-line hover:border-brand')}>
-          <div className="tpl-thumb" aria-hidden><Preview p={p} def={d} /></div><span className="mt-2 block">{d.name}{tpl === d.id && ' ✓'}</span></button>)}</div>
-        <p className="text-xs text-mute">{cat === 'Two-column' ? 'Two-column designs look good to people, but some ATS software reads columns out of order. Use a single-column template when you apply through an online form. Word export is always single-column.' : 'Each preview is your own resume in that template. Click one to apply it. Single-column templates are what ATS parsers read most reliably.'}</p></Card>
+          <div className="tpl-thumb" aria-hidden><Preview p={p} def={d} photo={st.photo} /></div><span className="mt-2 block">{d.name}{tpl === d.id && ' ✓'}</span>{atsSafe(d) && <span className="text-[10px] font-semibold text-good">ATS-friendly</span>}</button>)}</div>
+        <p className="text-xs text-mute">{cat === 'With photo' ? 'Photo templates suit countries and roles where a photo is expected. Many ATS systems cannot read photos, so use a template without one for online application forms. Word export leaves the photo out.' : cat === 'Two-column' ? 'Two-column designs look good to people, but some ATS software reads columns out of order. Use a single-column template when you apply through an online form. Word export is always single-column.' : 'Each preview is your own resume in that template. Click one to apply it. Single-column templates are what ATS parsers read most reliably.'}</p></Card>
 
       <Card className="space-y-3"><h3 className="font-extrabold">Save and download</h3>
         <Button variant="lime" className="w-full" disabled={busy || !dirty} onClick={() => saveProfile(p, st.prefs!)}>{dirty ? 'Save changes' : 'All changes saved'}</Button>
@@ -108,9 +128,10 @@ export default function ResumeView() {
 
     <div className="min-w-0"><p className="no-print mb-2 text-sm text-mute">Click any text on the page to edit it. Bullets: one per line.</p>
       <article className="resume-page" aria-label="Resume" {...paperProps(def)}>
-        <header className="r-head"><E tag="h1" value={p.name} onChange={v => up({ name: v })} placeholder="Your name" />
+        <header className={cn('r-head', def.photo && 'has-photo')}>{def.photo && (st.photo ? <img className="r-photo" src={st.photo} alt="Profile photo" /> : <label htmlFor="photo" className="r-photo no-print">Add photo</label>)}
+          <div className="r-ht"><E tag="h1" value={p.name} onChange={v => up({ name: v })} placeholder="Your name" />
           <E tag="p" className="r-role" value={p.currentDesignation} onChange={v => up({ currentDesignation: v })} placeholder="Job title" />
-          <p className="r-contact"><span className="r-c"><E value={p.email} onChange={v => up({ email: v })} placeholder="Email" /></span><span className="r-c"><E value={p.phone} onChange={v => up({ phone: v })} placeholder="Phone" /></span><span className="r-c"><E value={p.location} onChange={v => up({ location: v })} placeholder="City" /></span></p></header>
+          <p className="r-contact"><span className="r-c"><E value={p.email} onChange={v => up({ email: v })} placeholder="Email" /></span><span className="r-c"><E value={p.phone} onChange={v => up({ phone: v })} placeholder="Phone" /></span><span className="r-c"><E value={p.location} onChange={v => up({ location: v })} placeholder="City" /></span></p></div></header>
         {def.layout === 'single' ? <>{summarySec}{skillsSec}{expSec}{projSec}{eduSec}{certSec}</>
           : <div className="r-cols">{def.layout === 'left' ? <><div className="r-side">{skillsSec}{eduSec}{certSec}</div><div className="r-main">{summarySec}{expSec}{projSec}</div></> : <><div className="r-main">{summarySec}{expSec}{projSec}</div><div className="r-side">{skillsSec}{eduSec}{certSec}</div></>}</div>}
       </article></div>

@@ -146,11 +146,22 @@ await test('ATS section: score, edit on the template, switch template, download 
   await page.waitForFunction(b => +document.querySelector('[aria-label$="percent match"]').getAttribute('aria-label').split(' ')[0] > b, before); // score rises live
   const pick = async (cat, name) => { await page.getByRole('tab', { name: cat }).click(); await page.getByRole('radio', { name, exact: true }).click(); };
   let total = 0;
-  for (const cat of ['Simple', 'Modern', 'Bold header', 'Two-column']) {                                     // every preview applies its template when clicked
+  for (const cat of ['Simple', 'Modern', 'Bold header', 'Two-column', 'With photo']) {                                     // every preview applies its template when clicked
     await page.getByRole('tab', { name: cat }).click(); const n = await page.getByRole('radio').count(); assert.ok(n >= 6, `${cat}: ${n}`); total += n;
     for (let i = 0; i < n; i++) { const r = page.getByRole('radio').nth(i); await r.click(); assert.equal(await r.getAttribute('aria-checked'), 'true'); assert.equal(await page.locator('article [role=textbox]').first().innerText(), 'Asha R Rao'); }
   }
-  assert.ok(total >= 24, `templates: ${total}`);
+  assert.ok(total >= 31, `templates: ${total}`);
+  // photo template: upload a photo, the ATS check drops, the suggested ATS template restores it in one click
+  await pick('With photo', 'Portrait'); await page.waitForSelector('article[data-photo="round"] label.r-photo');
+  const withPhoto = await score();
+  await page.setInputFiles('#photo', { name: 'me.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') });
+  await page.waitForSelector('article img.r-photo'); assert.match(await page.locator('article img.r-photo').getAttribute('src'), /^data:image\/jpeg/);
+  await page.setInputFiles('#photo', file('not-image.txt', 'hello')); await toast(page).filter({ hasText: 'Choose an image file' }).waitFor();
+  assert.match(await page.locator('li', { hasText: 'Template layout' }).innerText(), /6\/10/);
+  assert.equal(await page.locator('article [role=textbox]').first().innerText(), 'Asha R Rao'); // adding a photo does not discard unsaved edits
+  await page.click('button:has-text("Use Classic")'); await page.waitForSelector('article[data-tpl="classic"]');
+  assert.ok(await score() > withPhoto, 'suggested template raises the score'); await page.getByText('is already ATS-friendly').waitFor();
+  if (process.env.KEEP_EXPORTS) { for (const n of ['Portrait', 'Studio', 'Coral']) { await pick('With photo', n); await page.locator('article').screenshot({ path: path.join(process.env.KEEP_EXPORTS, 'photo-' + n + '.png') }); } await page.locator('aside').screenshot({ path: path.join(process.env.KEEP_EXPORTS, 'aside.png') }); }
   await pick('Bold header', 'Banner'); await page.waitForSelector('article[data-tpl="banner"][data-head="band"]');
   assert.match(await page.getByRole('radio', { name: 'Banner' }).locator('.tpl-thumb').innerText(), /Asha R Rao/);  // previews show your own resume
   await pick('Two-column', 'Sidebar'); await page.waitForSelector('article[data-layout="left"] .r-cols .r-side');
