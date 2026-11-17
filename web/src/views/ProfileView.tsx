@@ -3,6 +3,7 @@ import { Badge, Button, Card, Input, Label, Select } from '../ui.tsx';
 import { useApp } from '../state.tsx';
 import { EmptyCard, ReplaceResume, lines } from './common.tsx';
 import type { Prefs, Profile } from '../api.ts';
+import { REGIONS } from '../boards.ts';
 
 const CATS: [keyof Profile['skills'], string][] = [['frontend', 'Frontend'], ['backend', 'Languages and backend'], ['frameworks', 'Frameworks'], ['libraries', 'Libraries'], ['databases', 'Databases'], ['cloud', 'Cloud and DevOps'], ['aiMl', 'AI / ML'], ['soft', 'Soft skills'], ['other', 'Other skills and tools']];
 
@@ -37,6 +38,8 @@ export default function ProfileView() {
         <Label>Industries<Chips items={p.industries} onChange={v => up({ industries: v })} /></Label></Card>
       <Card className="space-y-3"><h3 className="font-extrabold">What you want</h3>
         <Label>Target roles (used to build the search queries)<Chips items={prefs.roles} onChange={v => setPrefs({ ...prefs, roles: v })} /></Label>
+        <Label>Region (only companies and jobs in this country are kept)<Select value={prefs.region ?? ''} onChange={e => setPrefs({ ...prefs, region: e.target.value })}><option value="">Any region</option>{REGIONS.map(r => <option key={r}>{r}</option>)}</Select></Label>
+        <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={prefs.includeRemote === true} onChange={e => setPrefs({ ...prefs, includeRemote: e.target.checked })} />Also show remote jobs open to anyone, from any country</label>
         <Label>Preferred locations<Chips items={prefs.locations} onChange={v => setPrefs({ ...prefs, locations: v })} /></Label>
         <Label>Work modes<div className="flex gap-4 py-1 text-sm font-medium text-ink">{(['remote', 'hybrid', 'office'] as const).map(m => <label key={m} className="flex items-center gap-1.5 capitalize"><input type="checkbox" checked={prefs.workModes.includes(m)} onChange={e => setPrefs({ ...prefs, workModes: e.target.checked ? [...prefs.workModes, m] : prefs.workModes.filter(x => x !== m) })} />{m}</label>)}</div></Label>
         <Label>Blocklist (company or title words)<Input value={prefs.blocklist.join(', ')} onChange={e => setPrefs({ ...prefs, blocklist: lines(e.target.value) })} /></Label>

@@ -29,6 +29,9 @@ export const mapAdzuna = (j: any): RawJob[] => (j.results ?? []).map((x: any) =>
   url: x.redirect_url, description: x.description ?? '', postedAt: iso(x.created), salary: money('INR', x.salary_min, x.salary_max),
 }));
 
+// Adzuna runs one site per country.
+const ADZUNA: Record<string, string> = { India: 'in', 'United States': 'us', 'United Kingdom': 'gb', Canada: 'ca', Australia: 'au', Germany: 'de', France: 'fr', Netherlands: 'nl', Singapore: 'sg', 'South Africa': 'za', Brazil: 'br', Italy: 'it', Poland: 'pl', Austria: 'at', Switzerland: 'ch' };
+const EUROPE = ['Germany', 'United Kingdom', 'France', 'Netherlands', 'Spain', 'Ireland', 'Poland', 'Switzerland', 'Austria', 'Italy', 'Portugal', 'Belgium', 'Denmark', 'Sweden', 'Hungary', 'Romania'];
 const queries = (q: Query) => (q.queries.length ? q.queries : q.roles).slice(0, 3);
 const roles = (q: Query) => [...q.roles, ...q.queries];
 const keep = (j: RawJob, q: Query) => titleRelevant(j.title, roles(q));
@@ -39,7 +42,8 @@ export const apiSources: Adapter[] = [
     fetch: async (q, ctx) => (await Promise.all(queries(q).map(r => getJson(`https://remotive.com/api/remote-jobs?limit=50&search=${e(r)}`, { ...ctx, source: 'Remotive' })))).flatMap(mapRemotive) }),
   makeAdapter({ id: 'jobicy', name: 'Jobicy', note: 'Remote jobs worldwide. Free public API.', keep,
     fetch: async (q, ctx) => (await Promise.all(queries(q).map(r => getJson(`https://jobicy.com/api/v2/remote-jobs?count=50&tag=${e(r)}`, { ...ctx, source: 'Jobicy' })))).flatMap(mapJobicy) }),
-  makeAdapter({ id: 'arbeitnow', name: 'Arbeitnow', note: 'Mostly Europe, many English-language and remote roles. Free public API.', keep,
+  makeAdapter({ id: 'arbeitnow', name: 'Arbeitnow', note: 'Germany and Europe, many English-language and remote roles. Free public API.', keep,
+    skip: q => q.region && !EUROPE.includes(q.region) ? `Lists jobs in Germany and Europe only, so it is skipped for ${q.region}.` : null,
     async fetch(_q, ctx) { // paginated: first 3 pages
       const out: RawJob[] = [];
       for (let page = 1; page <= 3; page++) { const j = await getJson(`https://www.arbeitnow.com/api/job-board-api?page=${page}`, { ...ctx, source: 'Arbeitnow' }); out.push(...mapArbeitnow(j)); if (!j.links?.next) break; }
@@ -47,12 +51,13 @@ export const apiSources: Adapter[] = [
     } }),
   makeAdapter({ id: 'remoteok', name: 'RemoteOK', note: 'Remote jobs worldwide. Free public API (links go back to remoteok.com).', keep,
     fetch: async (_q, ctx) => mapRemoteOk(await getJson('https://remoteok.com/api', { ...ctx, source: 'RemoteOK' })) }),
-  makeAdapter({ id: 'adzuna', name: 'Adzuna India', note: 'Indian job listings. Needs your own free key from developer.adzuna.com (Preferences).', keep,
-    needs: q => q.adzuna?.id && q.adzuna.key ? null : 'Add a free Adzuna app id and key in Preferences to search Indian listings.',
+  makeAdapter({ id: 'adzuna', name: 'Adzuna', note: 'Job listings for your country. Needs your own free key from developer.adzuna.com (Settings).', keep,
+    needs: q => !(q.adzuna?.id && q.adzuna.key) ? 'Add a free Adzuna app id and key in Settings to search listings in your country.' : null,
+    skip: q => q.region && !ADZUNA[q.region] ? `Adzuna has no site for ${q.region}.` : null,
     async fetch(q, ctx) { // paginated: 2 pages per query
       const out: RawJob[] = [];
       for (const r of queries(q)) for (const page of [1, 2])
-        out.push(...mapAdzuna(await getJson(`https://api.adzuna.com/v1/api/jobs/in/search/${page}?app_id=${e(q.adzuna!.id)}&app_key=${e(q.adzuna!.key)}&results_per_page=50&what=${e(r)}&where=${e(q.locations[0] ?? '')}`, { ...ctx, source: 'Adzuna' })));
+        out.push(...mapAdzuna(await getJson(`https://api.adzuna.com/v1/api/jobs/${ADZUNA[q.region ?? 'India'] ?? 'in'}/search/${page}?app_id=${e(q.adzuna!.id)}&app_key=${e(q.adzuna!.key)}&results_per_page=50&what=${e(r)}&where=${e(q.locations[0] ?? '')}`, { ...ctx, source: 'Adzuna' })));
       return out;
     } }),
 ];

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type Prefs } from '../api.ts';
 import { Badge, Button, Card, Input, Label, Select } from '../ui.tsx';
 import { useApp } from '../state.tsx';
+import { boardsFor } from '../boards.ts';
 
 export default function SettingsView({ dark, toggleTheme }: { dark: boolean; toggleTheme: () => void }) {
   const { st, savePrefs, slotAction, busy, load } = useApp();
@@ -21,7 +22,7 @@ export default function SettingsView({ dark, toggleTheme }: { dark: boolean; tog
         <details className="text-sm"><summary className="cursor-pointer font-semibold">Adzuna key (Indian listings, free)</summary><div className="mt-2 grid gap-2"><Input aria-label="Adzuna app id" placeholder="App id" value={p.adzuna?.id ?? ''} onChange={e => save({ adzuna: { id: e.target.value, key: p.adzuna?.key ?? '' } })} /><Input aria-label="Adzuna app key" type="password" placeholder="App key" value={p.adzuna?.key ?? ''} onChange={e => save({ adzuna: { id: p.adzuna?.id ?? '', key: e.target.value } })} /><span className="text-xs text-mute">Get both at developer.adzuna.com. Stored only in this browser.</span></div></details>
         <label className="block space-y-1.5 text-xs font-semibold text-mute">Company career pages (<code>ats:token</code> per line)<textarea className="min-h-28 w-full rounded-2xl border border-line bg-card p-3 font-mono text-xs focus:border-brand" value={p.companies.map(c => [c.ats, c.token, c.name].filter(Boolean).join(':')).join('\n')}
           onChange={e => save({ companies: e.target.value.split('\n').map(l => l.trim().split(':')).filter(x => x.length >= 2 && x[1]).map(([ats, token, name]) => ({ ats: ats as 'greenhouse', token, name })) })} /></label>
-        <Button variant="outline" className="h-8" onClick={() => save({ companies: 'greenhouse:stripe\ngreenhouse:airbnb\ngreenhouse:gitlab\ngreenhouse:groww\ngreenhouse:cloudflare\nlever:cred\nlever:meesho\nlever:paytm\nlever:zeta\nashby:notion\nashby:openai\nashby:supabase'.split('\n').map(l => { const [ats, token] = l.split(':'); return { ats: ats as 'greenhouse', token }; }) })}>Fill with example boards</Button>
+        <Button variant="outline" className="h-8" onClick={() => save({ companies: boardsFor(p.region) })}>{p.region === 'India' ? 'Fill with Indian company boards' : `Fill with example boards${p.region ? ` (for ${p.region})` : ''}`}</Button>
         <Button variant="lime" disabled={busy || !dirty} onClick={() => savePrefs(p)}>{dirty ? 'Save settings' : 'Saved'}</Button></Card> : <Card className="text-sm text-mute">Upload a resume to unlock matching settings.</Card>}
 
       <div className="space-y-5">

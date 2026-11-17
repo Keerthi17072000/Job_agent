@@ -40,7 +40,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         onSource: run => setScan(s => ({ ...s, done: s.done + 1, fin: { ...s.fin, [run.adapter]: run } })),
         onPhase: phase => { setScan(s => ({ ...s, phase })); setMsg(phase); } });
       await load();
-      setMsg(`Search complete: ${r.added} new jobs added, ${r.duplicate} duplicates merged.`);
+      setMsg(`Search complete: ${r.added} new jobs added, ${r.duplicate} duplicates merged${r.outside ? `, ${r.outside} outside your region skipped` : ''}.`);
     } catch (e) { setMsg((e as Error).message === 'cancelled' ? 'Search cancelled.' : (e as Error).message); await load(); }
     finally { setScan(s => ({ ...s, running: false })); setBusy(false); }
   }, [load]);

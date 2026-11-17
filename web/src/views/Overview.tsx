@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Avatar, Badge, Button, Card, Input, LinkButton, Select, useCountUp, cn } from '../ui.tsx';
 import { useApp } from '../state.tsx';
+import { REGIONS } from '../boards.ts';
 import { Icon, ICONS, ReplaceResume, STATUS_LABEL, UploadCard, day } from './common.tsx';
 import type { Job } from '../api.ts';
 
@@ -11,7 +12,7 @@ function Tile({ label, value, tone }: { label: string; value: number; tone?: str
 
 export default function Overview() {
   const { st, scan, runScan, cancelScan, busy, savePrefs, ext, portalSearchAll, portalBusy } = useApp();
-  const [role, setRole] = useState(''), [loc, setLoc] = useState(''), [mode, setMode] = useState('');
+  const [role, setRole] = useState(''), [loc, setLoc] = useState(''), [mode, setMode] = useState(''), [region, setRegion] = useState<string | null>(null);
   if (!st) return null;
   if (!st.profile || !st.prefs) return <div className="view mx-auto max-w-2xl space-y-6 py-10 text-center">
     <h2 className="text-3xl font-extrabold md:text-4xl">Upload your resume, get matched to real jobs</h2>
@@ -29,7 +30,7 @@ export default function Overview() {
   const today = new Date().toISOString().slice(0, 10);
   const go = async () => {
     const roles = role.trim() ? [role.trim(), ...prefs.roles.filter(r => r !== role.trim())] : prefs.roles;
-    await savePrefs({ ...prefs, roles, locations: loc.trim() ? [loc.trim()] : prefs.locations, workModes: mode ? [mode as 'remote'] : prefs.workModes });
+    await savePrefs({ ...prefs, region: region ?? prefs.region, roles, locations: loc.trim() ? [loc.trim()] : prefs.locations, workModes: mode ? [mode as 'remote'] : prefs.workModes });
     await runScan();
   };
 
@@ -40,6 +41,7 @@ export default function Overview() {
         <form className="flex flex-wrap items-center gap-2" onSubmit={e => { e.preventDefault(); void go(); }}>
           <div className="relative min-w-52 flex-1"><Icon d={ICONS.search} className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-mute" /><Input className="pl-10" aria-label="Job role" placeholder={prefs.roles[0] ?? 'Job title'} value={role} onChange={e => setRole(e.target.value)} /></div>
           <Input className="w-44" aria-label="Location" placeholder={prefs.locations[0] ?? 'Location'} value={loc} onChange={e => setLoc(e.target.value)} />
+          <Select className="w-44" aria-label="Region" value={region ?? prefs.region ?? ''} onChange={e => setRegion(e.target.value)}><option value="">Any region</option>{REGIONS.map(r => <option key={r}>{r}</option>)}</Select>
           <Select className="w-40" aria-label="Work mode" value={mode} onChange={e => setMode(e.target.value)}><option value="">Any mode</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="office">Office</option></Select>
           <Button type="submit" disabled={busy || !prefs.roles.length && !role.trim()}>{scan.running ? <><span className="spinner" />Searching {scan.done}/{scan.total}</> : 'Search'}</Button>
           {scan.running && <Button type="button" variant="outline" onClick={cancelScan}>Cancel</Button>}

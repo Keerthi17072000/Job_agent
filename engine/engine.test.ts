@@ -337,3 +337,37 @@ test('the exported resume text re-parses to the same education grade, project to
   assert.deepEqual(again.links, p.links); assert.deepEqual(again.extras.map(x => x.heading), p.extras.map(x => x.heading)); assert.equal(again.name, p.name);
   for (const s of p.allSkills) assert.ok(again.allSkills.includes(s), s);
 });
+
+// ---- regions ----
+const { regionsOf, defaultRegion, inRegion, regionFromPhone, ANYWHERE } = await import('./region.ts');
+test('regionsOf reads countries from free-text locations, groups, and remote', () => {
+  assert.deepEqual(regionsOf('Bengaluru, Karnataka'), ['India']); assert.deepEqual(regionsOf('Pune'), ['India']); assert.deepEqual(regionsOf('Remote - India'), ['India']);
+  assert.deepEqual(regionsOf('San Francisco, CA'), ['United States']); assert.deepEqual(regionsOf('USA'), ['United States']); assert.deepEqual(regionsOf('Hanover'), ['Germany']); assert.deepEqual(regionsOf('Kaiserslautern, Rhineland-Palatinate'), ['Germany']);
+  assert.deepEqual(regionsOf('Germany,  Hungary,  Poland,  Romania,  UK').sort(), ['Germany', 'Hungary', 'Poland', 'Romania', 'United Kingdom']);
+  assert.ok(regionsOf('APAC,  EMEA,  Canada,  Europe,  USA').includes('India') && regionsOf('APAC,  EMEA,  Canada,  Europe,  USA').includes('Germany'));
+  assert.deepEqual(regionsOf('Worldwide'), [ANYWHERE]); assert.deepEqual(regionsOf('Remote'), [ANYWHERE]); assert.ok(regionsOf('Anywhere, Europe').includes(ANYWHERE));
+  assert.deepEqual(regionsOf(''), []); assert.deepEqual(regionsOf('N/A'), []); assert.deepEqual(regionsOf('Remote, Global'), [ANYWHERE]);
+  assert.equal(defaultRegion('Chennai, Tamil Nadu'), 'India'); assert.equal(defaultRegion('Remote'), ''); assert.equal(defaultRegion(''), '');
+});
+test('region filter: your country and open-to-anyone remote jobs stay, other countries go, unknown places are kept', () => {
+  assert.ok(inRegion(['India'], 'India')); assert.ok(!inRegion(['United States'], 'India')); assert.ok(inRegion([ANYWHERE], 'India')); assert.ok(!inRegion([ANYWHERE], 'India', false));
+  assert.ok(inRegion([], 'India')); assert.ok(inRegion(['United States'], '')); assert.ok(inRegion(['United States', 'India'], 'India'));
+});
+test('ingest drops jobs outside the chosen region, counts them, and keeps remote and unknown ones', () => {
+  const list: any[] = []; const pr = { ...prefs, region: 'India', includeRemote: true, blocklist: [] };
+  const mk = (n: number, location: string, extra: any = {}) => ({ source: 'S', sourceKind: 'career' as const, title: `Frontend Engineer ${n}`, company: `Co${n}`, location, url: `https://x.co/${n}`, description: 'React', ...extra });
+  const r = ingest([mk(1, 'Bengaluru'), mk(2, 'Berlin'), mk(3, 'USA'), mk(4, 'Worldwide'), mk(5, ''), mk(6, 'Remote', { workMode: 'remote' })], profile, pr, list);
+  assert.deepEqual(list.map(j => j.company), ['Co1', 'Co4', 'Co5', 'Co6']); assert.equal(r['rejected: outside your region'], 2); assert.deepEqual(list[0].regions, ['India']);
+  const l2: any[] = []; ingest([mk(4, 'Worldwide'), mk(1, 'Bengaluru')], profile, { ...pr, includeRemote: false }, l2); assert.deepEqual(l2.map(j => j.company), ['Co1']);
+  const l3: any[] = []; ingest([mk(2, 'Berlin')], profile, { ...pr, region: '' }, l3); assert.equal(l3.length, 1); // no region chosen: nothing is filtered
+});
+test('region-specific sources are skipped with a reason, not shown as failures', async () => {
+  const q = { roles: ['x'], queries: [], locations: [], companies: [], region: 'India' };
+  const r = await apiSources.find(a => a.id === 'arbeitnow')!.search(q); assert.equal(r.status, 'skipped'); assert.match(r.reason, /Germany and Europe only.*India/);
+  assert.equal((await apiSources.find(a => a.id === 'adzuna')!.search({ ...q, region: 'Japan' })).status, 'skipped');
+});
+test('region from a phone number when the resume names no place', () => {
+  assert.equal(regionFromPhone('+91-9443251405'), 'India'); assert.equal(regionFromPhone('+91 98765 43210'), 'India'); assert.equal(regionFromPhone('9876543210'), 'India'); assert.equal(regionFromPhone('98765 43210'), 'India');
+  assert.equal(regionFromPhone('+44 7700 900123'), 'United Kingdom'); assert.equal(regionFromPhone('+1 415 555 0100'), 'United States'); assert.equal(regionFromPhone('+49 30 1234567'), 'Germany');
+  assert.equal(regionFromPhone(''), ''); assert.equal(regionFromPhone('12345'), '');
+});

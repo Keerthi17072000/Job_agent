@@ -2,6 +2,7 @@ import { apiSources } from '../../engine/adapters/apis.ts';
 import { careerPages } from '../../engine/adapters/ats.ts';
 import { PORTALS, portalName } from '../../engine/adapters/portalList.ts';
 import { makeAi } from '../../engine/ai.ts';
+import { defaultRegion, regionFromPhone } from '../../engine/region.ts';
 import { parseLocal } from '../../engine/localResume.ts';
 import { resumeCorpus } from '../../engine/match.ts';
 import { ingest, toJob } from '../../engine/pipeline.ts';
@@ -9,6 +10,7 @@ import { normalizeProfile } from '../../engine/profile.ts';
 import { buildQueries } from '../../engine/queries.ts';
 import { STATUSES } from '../../engine/types.ts';
 import type { AdapterResult, Job, LogEntry, Prefs, Profile, Query, RawJob, Status } from '../../engine/types.ts';
+import { boardsFor } from './boards.ts';
 import { dot, embed } from './embed.ts';
 import { checkResume, fileText } from './resumeFile.ts';
 import * as store from './store.ts';
@@ -28,7 +30,7 @@ const DEFAULT_PREFS: Prefs = { roles: [], locations: [], workModes: [], minScore
 const readProfile = async () => { const p = await store.get<Profile>('profile'); return p ? normalizeProfile(p) : null; };
 const readPrefs = async (): Promise<Prefs | null> => { const p = await store.get<Prefs>('prefs'); return p ? { ...DEFAULT_PREFS, ...p, roles: p.roles ?? [], locations: p.locations ?? [], workModes: p.workModes ?? [], blocklist: p.blocklist ?? [], companies: p.companies ?? [] } : null; };
 const hydrateJob = (j: Job): Job => ({
-  ...j, externalId: j.externalId ?? '', sources: j.sources?.length ? j.sources : [{ source: j.source, url: j.url }], locationFit: j.locationFit ?? 'unknown', salary: j.salary ?? '', salaryValue: j.salaryValue ?? 0,
+  ...j, regions: j.regions ?? [], externalId: j.externalId ?? '', sources: j.sources?.length ? j.sources : [{ source: j.source, url: j.url }], locationFit: j.locationFit ?? 'unknown', salary: j.salary ?? '', salaryValue: j.salaryValue ?? 0,
   summary: j.summary ?? '', description: j.description ?? '', requiredSkills: j.requiredSkills ?? [], optionalSkills: j.optionalSkills ?? [], matchedSkills: j.matchedSkills ?? [], missingSkills: j.missingSkills ?? [], missingOptional: j.missingOptional ?? [],
   reasons: j.reasons ?? [], breakdown: Object.assign({ skills: 0, experience: 0, responsibilities: 0, title: 0, education: 0 }, j.breakdown), postedAt: j.postedAt ?? '', deadline: j.deadline ?? '', status: j.status ?? 'new', firstSeen: j.firstSeen ?? new Date().toISOString(),
 });
@@ -103,7 +105,10 @@ export const api = {
     const previous = await readProfile();
     if (previous && previous.name !== profile.name) await store.set('photo', ''); // a different person's resume must not keep the old photo
     await store.set('profile', profile); await store.set('resumeText', text.slice(0, 60000));
-    await store.set('prefs', { ...DEFAULT_PREFS, ...old, roles: profile.targetRoles, locations: profile.location ? [profile.location] : [] } satisfies Prefs);
+    const region = defaultRegion(profile.location) || regionFromPhone(profile.phone) || old?.region || ''; // the country of the new resume's location or phone number; kept from before when the resume names none
+    const next = { ...DEFAULT_PREFS, ...old, roles: profile.targetRoles, locations: profile.location ? [profile.location] : [], region, includeRemote: old?.includeRemote ?? false } satisfies Prefs; // jobs open to anyone are off until asked for: they bring companies from everywhere
+    if (!next.companies.length) next.companies = boardsFor(region); // companies that hire in the region, so the first search already lists them
+    await store.set('prefs', next);
     const keep = (await readJobs()).filter(j => j.saved || j.status !== 'new');
     await Promise.all([store.set('jobs', keep), store.set('runs', []), store.set('cache', {}), store.set('lastSearch', '')]);
     await rescore();
@@ -120,8 +125,8 @@ export const api = {
   search: async (o: { fresh?: boolean; signal?: AbortSignal; onSource?: (r: Run) => void; onPhase?: (s: string) => void } = {}) => {
     const { profile, prefs } = await need();
     const queries = buildQueries(profile, prefs);
-    const query: Query = { roles: prefs.roles, queries, locations: prefs.locations, companies: prefs.companies, adzuna: prefs.adzuna };
-    const sig = JSON.stringify([queries, prefs.locations, prefs.companies, !!prefs.adzuna?.id]);
+    const query: Query = { region: prefs.region, roles: prefs.roles, queries, locations: prefs.locations, companies: prefs.companies, adzuna: prefs.adzuna };
+    const sig = JSON.stringify([queries, prefs.locations, prefs.companies, !!prefs.adzuna?.id, prefs.region]);
     const cache = (await store.get<Record<string, { at: number; sig: string; jobs: RawJob[] }>>('cache')) ?? {};
     const logs: LogEntry[] = [], log = (e: LogEntry) => logs.push(e);
     const results: Run[] = [], raws: RawJob[] = [];
@@ -157,7 +162,7 @@ export const api = {
     const perSource = results.map(r => ({ ...r }));
     await Promise.all([store.set('jobs', jobs), store.set('runs', [...((await store.get<Run[]>('runs')) ?? []).filter(r => !SOURCES.some(x => x.id === r.adapter)), ...perSource]), store.set('cache', cache), store.set('lastSearch', new Date().toISOString()),
       store.set('logs', [...logs, ...((await store.get<LogEntry[]>('logs')) ?? [])].slice(0, 300))]);
-    return { results: perSource, added: counts.added, duplicate: counts.duplicate };
+    return { results: perSource, added: counts.added, duplicate: counts.duplicate, outside: counts['rejected: outside your region'] ?? 0 };
   },
 
   /** Pull listings the browser extension collected from portal pages you viewed. */

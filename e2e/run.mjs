@@ -21,10 +21,10 @@ const BASE = `http://127.0.0.1:${server.address().port}/`;
 const JD = '<p>Requirements: React, TypeScript. 3-8 years of experience. Bachelor degree. Build dashboards.</p>';
 const json = body => ({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
 async function mockSources(page, { nurse = false } = {}) {
-  await page.route(/remotive\.com/, r => r.fulfill(json({ jobs: nurse ? [] : [{ id: 1, url: 'https://remotive.com/remote-jobs/fe-1', title: 'Frontend Developer', company_name: 'RemoCo', candidate_required_location: 'Remote', publication_date: '2026-11-10T00:00:00', description: JD, salary: '$60k' }] })));
+  await page.route(/remotive\.com/, r => r.fulfill(json({ jobs: nurse ? [] : [{ id: 1, url: 'https://remotive.com/remote-jobs/fe-1', title: 'Frontend Developer', company_name: 'RemoCo', candidate_required_location: 'India', publication_date: '2026-11-10T00:00:00', description: JD, salary: '$60k' }] })));
   await page.route(/arbeitnow\.com/, r => r.fulfill(json({ links: {}, data: nurse ? [] : [{ slug: 'fe-x', title: 'Frontend Developer', company_name: 'RemoCo', location: 'Remote', remote: true, url: 'https://www.arbeitnow.com/jobs/fe-x', description: JD, created_at: 1762700000 }] })));
   await page.route(/jobicy\.com/, r => r.fulfill({ status: 500, body: 'boom' }));            // one source failing must not stop the others
-  await page.route(/remoteok\.com/, r => r.fulfill(json([{ legal: 'x' }, { id: 9, url: 'https://remoteok.com/remote-jobs/9', position: 'Staff Nurse Educator', company: 'MedCo', description: 'Patient care and training. 5+ years.', location: 'Remote' }])));
+  await page.route(/remoteok\.com/, r => r.fulfill(json([{ legal: 'x' }, { id: 9, url: 'https://remoteok.com/remote-jobs/9', position: 'Staff Nurse Educator', company: 'MedCo', description: 'Patient care and training. 5+ years.', location: 'Kerala, India' }].concat(nurse ? [] : [{ id: 10, url: 'https://remoteok.com/remote-jobs/10', position: 'Frontend Developer', company: 'RemoCo', description: JD, location: 'India' }]))));
   await page.route(/boards-api\.greenhouse\.io/, r => r.fulfill(json({ jobs: [{ id: 1, title: 'Frontend Engineer', absolute_url: 'https://boards.greenhouse.io/testco/jobs/1', location: { name: 'Pune' }, content: '' }] }))); // no description
 }
 
@@ -75,7 +75,7 @@ await test('upload, edit profile, search with a failing source, dedupe, save, tr
   const href = await page.locator('a:has-text("Apply")').first().getAttribute('href');
   assert.ok(/^https:\/\//.test(href), 'original link is https');
   await page.locator('a.font-extrabold', { hasText: 'Frontend Developer' }).first().click(); await page.waitForSelector('text=Resume suitability');
-  assert.ok(await page.locator('a:has-text("Remotive")').count() && await page.locator('a:has-text("Arbeitnow")').count(), 'both source links kept');
+  assert.ok(await page.locator('a:has-text("Remotive")').count() && await page.locator('a:has-text("RemoteOK")').count(), 'both source links kept');
   await page.click('button:has-text("Save job")'); await page.waitForSelector('button:has-text("Saved")');
   await page.selectOption('select[aria-label=Status]', 'applied'); await page.fill('textarea[aria-label=Notes]', 'Call HR'); await page.locator('textarea[aria-label=Notes]').blur(); await page.waitForTimeout(300);
   await page.reload(); await page.goto(BASE + '#/applications'); await page.waitForSelector('text=Call HR');
@@ -104,6 +104,30 @@ await test('uploading a different resume replaces roles and results, keeps track
   await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0'); await page.waitForSelector('text=Staff Nurse Educator');
   assert.equal(await page.locator('a.font-extrabold', { hasText: 'Frontend Engineer' }).count(), 0, 'untracked results of the old resume are gone');
   await page.goto(BASE + '#/saved'); await page.waitForSelector('a.font-extrabold:has-text("Frontend Developer")');
+});
+
+await test('region: Indian resume keeps Indian and open-to-anyone jobs, hides other countries, and the company list shows only that region', async page => {
+  await page.route(/api\.lever\.co\/v0\/postings\/cred/, r => r.fulfill(json([{ id: 'a', text: 'Frontend Developer', hostedUrl: 'https://jobs.lever.co/cred/a', categories: { location: 'Bangalore' }, descriptionPlain: 'React and TypeScript. 3-6 years.' }, { id: 'b', text: 'Frontend Developer', hostedUrl: 'https://jobs.lever.co/cred/b', categories: { location: 'Berlin, Germany' }, descriptionPlain: 'React.' }])));
+  await page.route(/arbeitnow\.com/, r => r.fulfill(json({ links: {}, data: [{ slug: 'z', title: 'Frontend Developer', company_name: 'Berliner GmbH', location: 'Berlin', remote: false, url: 'https://www.arbeitnow.com/jobs/z', description: 'React', created_at: 1762700000 }] })));
+  await page.route(/remotive\.com/, r => r.fulfill(json({ jobs: [{ id: 1, url: 'https://remotive.com/remote-jobs/1', title: 'Frontend Developer', company_name: 'USOnly Inc', candidate_required_location: 'USA', publication_date: '2026-11-10T00:00:00', description: JD }, { id: 2, url: 'https://remotive.com/remote-jobs/2', title: 'Frontend Developer', company_name: 'GlobalRemote Ltd', candidate_required_location: 'Worldwide', publication_date: '2026-11-10T00:00:00', description: JD }] })));
+  await home(page); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
+  await page.goto(BASE + '#/profile'); assert.equal(await page.locator('label', { hasText: /^Region/ }).locator('select').inputValue(), 'India'); // taken from "Bangalore" in the resume
+  await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0');
+  const companies = await page.locator('select[aria-label="Company"] option').allInnerTexts();
+  assert.ok(companies.some(c => /^cred \(1\)$/i.test(c)), companies.join('|'));
+  assert.ok(!companies.some(c => /Berliner|USOnly|GlobalRemote/.test(c)), 'foreign and open-to-anyone companies are not listed by default');
+  assert.equal(await page.locator('select[aria-label="Region"] option').count() > 1, true);
+  await page.goto(BASE + '#/sources'); assert.match(await page.locator('section[aria-label="Automatic sources"] > div', { hasText: 'Arbeitnow' }).innerText(), /Skipped[\s\S]*Germany and Europe only/);  // a Europe-only source is skipped, not shown as failed
+  await page.goto(BASE + '#/profile'); await page.getByLabel('Also show remote jobs open to anyone').check(); // opt in to remote jobs from anywhere
+  await page.click('button:has-text("Confirm and update matches")'); await toast(page).filter({ hasText: 'Profile confirmed' }).waitFor();
+  await page.goto(BASE + '#/overview'); await page.click('button:has-text("Search")'); await toast(page).filter({ hasText: 'Searching all sources' }).waitFor(); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+  await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0');
+  assert.ok((await page.locator('select[aria-label="Company"] option').allInnerTexts()).some(c => /GlobalRemote Ltd \(1\)/.test(c)), 'remote jobs open to anyone appear once asked for');
+  await page.goto(BASE + '#/profile'); await page.locator('label', { hasText: /^Region/ }).locator('select').selectOption(''); // any region: a new search keeps everything
+  await page.click('button:has-text("Confirm and update matches")'); await toast(page).filter({ hasText: 'Profile confirmed' }).waitFor();
+  await page.goto(BASE + '#/overview'); await page.click('button:has-text("Search")'); await toast(page).filter({ hasText: 'Searching all sources' }).waitFor(); await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+  await page.goto(BASE + '#/jobs'); await page.locator('select[aria-label="Minimum match"]').selectOption('0');
+  assert.ok((await page.locator('select[aria-label="Company"] option').allInnerTexts()).some(c => /Berliner/.test(c)), 'with no region chosen, other countries return');
 });
 
 await test('two profiles on one browser are isolated; switching restores each', async page => {

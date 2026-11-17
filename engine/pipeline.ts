@@ -1,5 +1,6 @@
 import { canonicalUrl, fingerprint, htmlToText, norm, salaryValue, similarity } from './text.ts';
 import { category, detectWorkMode, expLevel, match } from './match.ts';
+import { ANYWHERE, inRegion, regionsOf } from './region.ts';
 import type { Job, Prefs, Profile, RawJob } from './types.ts';
 
 /** 64-bit FNV-1a as 16 hex chars: stable id that works in browsers and Node. */
@@ -9,7 +10,10 @@ function hash(s: string): string {
   return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
 }
 
-export type Rejection = 'missing title/company' | 'no verifiable https url' | 'blocklisted';
+/** Countries a job is open to; a remote job with no place named is open to anyone. */
+export const jobRegions = (location: string | undefined, workMode?: string) => { const r = regionsOf(location ?? ''); return r.length ? r : workMode === 'remote' ? [ANYWHERE] : []; };
+
+export type Rejection = 'missing title/company' | 'no verifiable https url' | 'blocklisted' | 'outside your region';
 
 /** Raw adapter output to a scored job. Refuses anything without a verifiable source and original URL. `semantic` is an optional embedding similarity (0..1) for responsibilities. */
 export function toJob(raw: RawJob, profile: Profile, prefs: Prefs, semantic?: number): Job | Rejection {
@@ -25,7 +29,7 @@ export function toJob(raw: RawJob, profile: Profile, prefs: Prefs, semantic?: nu
   const fp = fingerprint(raw.company, raw.title, raw.location);
   return {
     id: hash(fp), fingerprint: fp, canonicalUrl: cUrl, url: raw.url, externalId: raw.externalId ?? '', sources: [{ source: raw.source, url: raw.url }],
-    source: raw.source, sourceKind: raw.sourceKind, title: raw.title.trim(), company: raw.company.trim(), location: (raw.location ?? '').trim(), workMode, locationFit: m.locationFit,
+    source: raw.source, sourceKind: raw.sourceKind, title: raw.title.trim(), company: raw.company.trim(), location: (raw.location ?? '').trim(), regions: jobRegions(raw.location, workMode), workMode, locationFit: m.locationFit,
     expMin: m.expMin, expMax: m.expMax, expLevel: expLevel(m.expMin), salary: raw.salary ?? '', salaryValue: salaryValue(raw.salary ?? ''),
     summary: description.slice(0, 300) + (description.length > 300 ? '…' : ''), description,
     requiredSkills: m.required, optionalSkills: m.optional, matchedSkills: m.matched, missingSkills: m.missing, missingOptional: m.missingOptional,
@@ -57,7 +61,8 @@ export function addJob(list: Job[], j: Job): 'added' | 'duplicate' {
 export function ingest(raws: RawJob[], profile: Profile, prefs: Prefs, list: Job[], semantic?: (raw: RawJob) => number | undefined) {
   const out: Record<string, number> = { added: 0, duplicate: 0 };
   for (const raw of raws) {
-    const j = toJob(raw, profile, prefs, semantic?.(raw));
+    // the region filter applies when jobs are collected; rescoring stored jobs never removes them
+    const j = !inRegion(jobRegions(raw.location, raw.workMode), prefs.region, prefs.includeRemote === true) ? 'outside your region' as const : toJob(raw, profile, prefs, semantic?.(raw));
     const k = typeof j === 'string' ? `rejected: ${j}` : addJob(list, j);
     out[k] = (out[k] ?? 0) + 1;
   }

@@ -51,7 +51,7 @@ export function JobCard({ job, compact }: { job: Job; compact?: boolean }) {
         <Badge tone={job.score >= 75 ? 'good' : job.score >= 60 ? 'brand' : 'mute'} className="shrink-0">{job.category}</Badge></div>
       <div className="flex flex-wrap gap-1.5 text-xs">
         {job.workMode && <Badge tone={job.workMode === 'remote' ? 'lime' : 'brand'}>{job.workMode}</Badge>}<Badge>{job.expLevel}</Badge>
-        {job.salary && <Badge tone="warn">{job.salary}</Badge>}<Badge className="gap-1"><Icon d={ICONS.pin} className="size-3" />{job.location || 'Location not stated'}</Badge>
+        {job.salary && <Badge tone="warn">{job.salary}</Badge>}<Badge className="gap-1"><Icon d={ICONS.pin} className="size-3" />{job.location || 'Location not stated'}{job.regions.length === 1 && !job.location.includes(job.regions[0]) ? ` · ${job.regions[0]}` : ''}</Badge>
         {job.locationFit === 'mismatch' && <Badge tone="bad">outside your location/mode</Badge>}</div>
       {!compact && <p className="text-sm text-mute">{job.reasons.slice(0, 2).join(' ')}</p>}
       {!compact && <div className="flex flex-wrap gap-1.5">{chip(job.matchedSkills, 'good')}{chip(job.missingSkills, 'bad')}</div>}

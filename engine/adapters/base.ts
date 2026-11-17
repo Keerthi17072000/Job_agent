@@ -14,7 +14,8 @@ const msg = (e: unknown) => { const m = (e as Error).message; return /fetch/i.te
 export interface AdapterSpec {
   id: string; name: string; note: string;
   fetch(q: Query, ctx: SearchCtx): Promise<RawJob[]>;
-  needs?(q: Query): string | null;                       // reason the source cannot run yet
+  needs?(q: Query): string | null;                       // reason the source cannot run yet (setup missing)
+  skip?(q: Query): string | null;                        // reason the source does not apply to this search (wrong region)
   keep?(job: RawJob, q: Query): boolean;                 // relevance filter applied after normalizing
   details?(job: RawJob, ctx: SearchCtx): Promise<RawJob>;
 }
@@ -35,6 +36,8 @@ export function makeAdapter(spec: AdapterSpec): Adapter {
       const base = { adapter: spec.id, name: spec.name };
       const log = (level: 'info' | 'warn' | 'error', m: string) => ctx.log?.({ at: new Date().toISOString(), source: spec.name, level, msg: m });
       if (!q.roles.length && !q.queries.length) { set('not_configured', 'Add at least one target role.'); return { ...base, status: 'not_configured', reason: status.reason, jobs: [] }; }
+      const skipped = spec.skip?.(q);
+      if (skipped) { set('skipped', skipped); return { ...base, status: 'skipped', reason: skipped, jobs: [] }; }
       const missing = spec.needs?.(q);
       if (missing) { set('not_configured', missing); return { ...base, status: 'not_configured', reason: missing, jobs: [] }; }
       try {

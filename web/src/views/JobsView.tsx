@@ -14,18 +14,22 @@ const SORTS: Record<string, (a: Job, b: Job) => number> = {
 
 export default function JobsView({ savedOnly }: { savedOnly?: boolean }) {
   const { st, scan } = useApp();
-  const [f, setF] = useState({ min: -1, role: '', company: '', location: '', exp: '', salary: false, mode: '', portal: '', posted: '', status: '', skills: '', fit: false, sort: 'match' });
+  const [f, setF] = useState({ min: -1, region: '', role: '', company: '', location: '', exp: '', salary: false, mode: '', portal: '', posted: '', status: '', skills: '', fit: false, sort: 'match' });
   const set = (k: keyof typeof f, v: string | number | boolean) => setF(x => ({ ...x, [k]: v }));
   const jobs = st?.jobs ?? [];
   const min = f.min >= 0 ? f.min : savedOnly ? 0 : st?.prefs?.minScore ?? 60; // saved jobs are shown whatever their score
   const skills = lines(f.skills.toLowerCase());
-  const shown = useMemo(() => jobs.filter(j => {
+  const pass = (j: Job, skipCompany = false) => {
     const age = j.postedAt ? (Date.now() - +new Date(j.postedAt)) / 864e5 : 0;
-    return (!savedOnly || j.saved) && j.score >= min && j.title.toLowerCase().includes(f.role.toLowerCase()) && (!f.company || j.company === f.company)
-      && j.location.toLowerCase().includes(f.location.toLowerCase()) && (!f.exp || j.expLevel === f.exp) && (!f.salary || !!j.salary) && (!f.mode || j.workMode === f.mode)
+    return (!savedOnly || j.saved) && j.score >= min && j.title.toLowerCase().includes(f.role.toLowerCase()) && (skipCompany || !f.company || j.company === f.company)
+      && (!f.region || j.regions.includes(f.region)) && j.location.toLowerCase().includes(f.location.toLowerCase()) && (!f.exp || j.expLevel === f.exp) && (!f.salary || !!j.salary) && (!f.mode || j.workMode === f.mode)
       && (!f.portal || j.sources.some(s => s.source === f.portal)) && (!f.status || j.status === f.status) && (!f.fit || j.locationFit !== 'mismatch')
       && (!skills.length || skills.every(s => j.requiredSkills.includes(s) || j.optionalSkills.includes(s))) && (!f.posted || (j.postedAt !== '' && age <= +f.posted));
-  }).sort(SORTS[f.sort]), [jobs, f, min, savedOnly]);
+  };
+  const shown = useMemo(() => jobs.filter(j => pass(j)).sort(SORTS[f.sort]), [jobs, f, min, savedOnly]);
+  // the company list holds only companies that have a job passing the other filters (so, for example, only those in the chosen region), with their job counts
+  const companies = useMemo(() => { const m = new Map<string, number>(); for (const j of jobs) if (pass(j, true)) m.set(j.company, (m.get(j.company) ?? 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])); }, [jobs, f, min, savedOnly]);
+  const regions = useMemo(() => { const m = new Map<string, number>(); for (const j of jobs) for (const r of j.regions) m.set(r, (m.get(r) ?? 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [jobs]);
   const uniq = (g: (j: Job) => string) => [...new Set(jobs.map(g).filter(Boolean))].sort();
   if (!st) return null;
   if (!st.profile) return <EmptyCard title="Upload your resume first" body="Matches appear here once your resume has been read." cta={{ href: '#/overview', label: 'Upload resume' }} />;
@@ -38,7 +42,8 @@ export default function JobsView({ savedOnly }: { savedOnly?: boolean }) {
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <Select aria-label="Minimum match" value={min} onChange={e => set('min', +e.target.value)}><option value={0}>Any score</option><option value={60}>60+ Moderate</option><option value={75}>75+ Strong</option><option value={90}>90+ Excellent</option></Select>
           <Input aria-label="Job title" placeholder="Job title" value={f.role} onChange={e => set('role', e.target.value)} />
-          <Select aria-label="Company" value={f.company} onChange={e => set('company', e.target.value)}><option value="">All companies</option>{uniq(j => j.company).map(c => <option key={c}>{c}</option>)}</Select>
+          <Select aria-label="Region" value={f.region} onChange={e => { set('region', e.target.value); set('company', ''); }}><option value="">All regions</option>{regions.map(([r, n]) => <option key={r} value={r}>{r} ({n})</option>)}</Select>
+          <Select aria-label="Company" value={f.company} onChange={e => set('company', e.target.value)}><option value="">All companies ({companies.length})</option>{companies.map(([c, n]) => <option key={c} value={c}>{c} ({n})</option>)}</Select>
           <Input aria-label="Location" placeholder="Location" value={f.location} onChange={e => set('location', e.target.value)} />
           <Select aria-label="Experience" value={f.exp} onChange={e => set('exp', e.target.value)}><option value="">All experience</option>{uniq(j => j.expLevel).map(c => <option key={c}>{c}</option>)}</Select>
           <Select aria-label="Work mode" value={f.mode} onChange={e => set('mode', e.target.value)}><option value="">Remote / Hybrid / Office</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="office">Office</option></Select>

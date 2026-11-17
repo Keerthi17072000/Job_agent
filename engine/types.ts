@@ -26,10 +26,10 @@ export interface Profile {
 
 export interface Company { ats: 'greenhouse' | 'lever' | 'ashby' | 'smartrecruiters'; token: string; name?: string }
 export interface Adzuna { id: string; key: string }
-export interface Prefs { roles: string[]; locations: string[]; workModes: WorkMode[]; minScore: number; blocklist: string[]; companies: Company[]; adzuna?: Adzuna; minSalary?: number; aiProvider?: 'claude' | 'openai'; aiKey?: string; semantic?: boolean; autoRefresh?: boolean }
-export interface Query { roles: string[]; queries: string[]; locations: string[]; companies: Company[]; adzuna?: Adzuna }
+export interface Prefs { roles: string[]; locations: string[]; workModes: WorkMode[]; minScore: number; blocklist: string[]; companies: Company[]; adzuna?: Adzuna; minSalary?: number; region?: string; includeRemote?: boolean; aiProvider?: 'claude' | 'openai'; aiKey?: string; semantic?: boolean; autoRefresh?: boolean }
+export interface Query { region?: string; roles: string[]; queries: string[]; locations: string[]; companies: Company[]; adzuna?: Adzuna }
 
-export type Access = 'ok' | 'blocked' | 'manual' | 'error' | 'not_configured';
+export type Access = 'ok' | 'blocked' | 'manual' | 'error' | 'not_configured' | 'skipped';
 export interface LogEntry { at: string; source: string; level: 'info' | 'warn' | 'error'; msg: string }
 export interface SearchCtx { log?: (e: LogEntry) => void; signal?: AbortSignal }
 export interface AdapterResult { adapter: string; name: string; status: Access; reason: string; jobs: RawJob[] }
@@ -51,7 +51,7 @@ export interface Job {
   id: string; fingerprint: string; canonicalUrl: string; url: string; externalId: string;
   sources: JobSource[]; // every place this canonical job was seen
   source: string; sourceKind: 'portal' | 'career';
-  title: string; company: string; location: string; workMode: WorkMode; locationFit: LocationFit;
+  title: string; company: string; location: string; regions: string[]; workMode: WorkMode; locationFit: LocationFit;
   expMin: number | null; expMax: number | null; expLevel: string; salary: string; salaryValue: number; summary: string; description: string;
   requiredSkills: string[]; optionalSkills: string[]; matchedSkills: string[]; missingSkills: string[]; missingOptional: string[];
   score: number; category: string; reasons: string[]; breakdown: Breakdown;

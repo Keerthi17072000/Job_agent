@@ -2,7 +2,7 @@ import { Badge, Button, Card } from '../ui.tsx';
 import { useApp } from '../state.tsx';
 import { PORTALS, SOURCES } from '../api.ts';
 
-const TONE = { ok: 'good', error: 'bad', not_configured: 'warn', blocked: 'bad', manual: 'warn' } as const;
+const TONE = { ok: 'good', error: 'bad', not_configured: 'warn', blocked: 'bad', manual: 'warn', skipped: 'mute' } as const;
 
 export default function SourcesView() {
   const { st, scan, runScan, cancelScan, busy, ext, checkExtension, portalSearch, portalSearchAll, portalBusy } = useApp();
@@ -16,7 +16,7 @@ export default function SourcesView() {
     <section aria-label="Automatic sources" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{SOURCES.map(s => {
       const r = scan.running ? scan.fin[s.id] : st.runs.find(x => x.adapter === s.id), wait = scan.running && !r;
       return <Card key={s.id} className="space-y-2 p-4"><div className="flex items-center justify-between gap-2"><b className="text-sm">{s.name}</b>
-        <Badge tone={wait ? 'brand' : r ? TONE[r.status as keyof typeof TONE] ?? 'mute' : 'mute'}>{wait && <span className="dot-live" />}{wait ? 'Searching' : !r ? 'Ready' : r.status === 'ok' ? r.found === 1 ? '1 listing' : `${r.found} listings` : r.status === 'not_configured' ? 'Needs setup' : 'Error'}</Badge></div>
+        <Badge tone={wait ? 'brand' : r ? TONE[r.status as keyof typeof TONE] ?? 'mute' : 'mute'}>{wait && <span className="dot-live" />}{wait ? 'Searching' : !r ? 'Ready' : r.status === 'ok' ? r.found === 1 ? '1 listing' : `${r.found} listings` : r.status === 'not_configured' ? 'Needs setup' : r.status === 'skipped' ? 'Skipped' : 'Error'}</Badge></div>
         {wait ? <div className="space-y-1.5"><div className="skel h-3" /><div className="skel h-3 w-2/3" /></div> : <p className="text-xs text-mute">{r?.reason ?? s.note}</p>}
         {r && !scan.running && <p className="text-[11px] text-mute">checked {new Date(r.checked_at).toLocaleTimeString()}{r.cached ? ' · cached' : ''}</p>}</Card>;
     })}</section>
