@@ -203,6 +203,17 @@ export const api = {
     return { portal: portal.id, name: portal.name, found: raws.length, added: counts.added, duplicate: counts.duplicate, blocked: r.blocked, error: r.error };
   },
 
+  /** Openings of one company on a restricted portal, read through the extension (user clicked). Only listings naming the company are kept; scored, not stored. */
+  companyPortalSearch: async (portalId: string, company: string): Promise<{ jobs: Job[]; others: number; blocked?: string; error?: string }> => {
+    const portal = PORTALS.find(p => p.id === portalId); if (!portal) throw new Error('Unknown portal');
+    const { profile, prefs } = await need();
+    const r = await extRequest<{ jobs?: RawJob[]; blocked?: string; error?: string }>('jobagent-search', { url: portal.searchUrl(company, '') }, 90000);
+    const key = company.toLowerCase().replace(/[^a-z0-9]/g, ''), raws = (r.jobs ?? []).map(j => ({ ...j, source: portalName(j.source), sourceKind: 'portal' as const, description: j.description ?? '' }));
+    const mine = raws.filter(j => j.company.toLowerCase().replace(/[^a-z0-9]/g, '').includes(key));
+    const jobs = mine.map(raw => toJob(raw, profile, prefs)).filter((j): j is Job => typeof j === 'object').sort((a, b) => b.score - a.score);
+    return { jobs, others: raws.length - mine.length, blocked: r.blocked, error: r.error };
+  },
+
   /** Profile photo for photo templates: cropped square, at most 320px, stored only in this browser. '' removes it. */
   setPhoto: async (file: File | null) => {
     if (!file) return store.set('photo', '');

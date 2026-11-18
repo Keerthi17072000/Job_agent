@@ -9,13 +9,19 @@ type Result = { label: string; company: Company; jobs: Job[] };
 
 /** Look up any company's openings: its public job board is found from its name, no setup. */
 export default function CompanyView() {
-  const { st, setMsg, load } = useApp();
+  const { st, setMsg, load, ext } = useApp();
+  const [pBusy, setPBusy] = useState(''), [pRes, setPRes] = useState<{ portal: string; jobs: Job[]; others: number; note?: string }[]>([]);
   const [name, setName] = useState(''), [busy, setBusy] = useState(false), [res, setRes] = useState<{ asked: string; boards: Result[] } | null>(null), [q, setQ] = useState('');
   if (!st) return null;
   if (!st.profile) return <EmptyCard title="Upload your resume first" body="Openings are scored against your resume." cta={{ href: '#/overview', label: 'Upload resume' }} />;
   const go = async () => {
     if (name.trim().length < 2) return; setBusy(true); setRes(null); setQ('');
     try { setRes({ asked: name.trim(), boards: await api.lookupCompany(name.trim()) }); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+  };
+  const viaPortal = async (id: string, label: string) => {
+    setPBusy(id);
+    try { const r = await api.companyPortalSearch(id, res?.asked || name.trim()); setPRes(x => [...x.filter(y => y.portal !== label), { portal: label, jobs: r.jobs, others: r.others, note: r.blocked ?? r.error }]); }
+    catch (e) { setMsg((e as Error).message); } finally { setPBusy(''); }
   };
   const role = st.prefs?.roles[0] ?? '', loc = st.prefs?.locations[0] ?? '';
   return <div className="view space-y-5">
@@ -28,6 +34,14 @@ export default function CompanyView() {
       <p className="text-sm text-mute">This usually means the company runs its own careers site or uses Workday or another system this app cannot read, or the board has no openings right now. Try its name spelled differently, or look yourself:</p>
       <div className="flex flex-wrap gap-2"><LinkButton href={`https://www.google.com/search?q=${encodeURIComponent(res.asked + ' careers jobs')}`}>Search the web</LinkButton>
         {PORTALS.filter(p => ['linkedin', 'naukri', 'indeed'].includes(p.id)).map(p => <LinkButton key={p.id} href={p.searchUrl(res.asked, '')}>{p.name}</LinkButton>)}</div></Card>}
+
+    {res && <Card className="space-y-3"><p className="font-extrabold">Also look on Naukri and Indeed</p>
+      <p className="text-sm text-mute">{ext ? 'Reads those sites in your own browser (one page each, only when you click) and keeps listings that name this company.' : 'Needs the Job Agent extension: install it from Sources, then come back.'}</p>
+      <div className="flex flex-wrap gap-2">{[['naukri', 'Naukri'], ['indeed', 'Indeed']].map(([id, l]) => <Button key={id} variant="outline" disabled={!ext || !!pBusy} onClick={() => void viaPortal(id, l)}>{pBusy === id ? <><span className="spinner" />Reading {l}…</> : `Search ${l}`}</Button>)}</div></Card>}
+    {pRes.map(r => <section key={r.portal} className="space-y-3" aria-label={`${r.portal} openings`}><Card className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-base font-extrabold">{r.portal}: {r.jobs.length} at {res?.asked}</h3>
+      <p className="text-xs text-mute">{r.note ?? (r.others ? `${r.others} other listings from different companies were left out.` : 'Listings read from the page.')}</p></div>
+      {!!r.jobs.length && <Button variant="lime" onClick={async () => { const n = await api.saveJobs(r.jobs); await load(); setMsg(`${n} openings saved to your jobs.`); }}>Save these jobs</Button>}</Card>
+      <div className="grid gap-3 xl:grid-cols-2">{r.jobs.map(j => <Card key={j.id} className="flex items-center gap-4 p-4"><ScoreRing score={j.score} size={48} /><div className="min-w-0 flex-1"><p className="font-extrabold leading-snug">{j.title}</p><p className="truncate text-xs text-mute">{j.location || 'Location not stated'}</p></div><LinkButton href={j.url}>Open</LinkButton></Card>)}</div></section>)}
 
     {res?.boards.map(b => { // big boards (hundreds of openings) show the best 100; the filter narrows the rest
       const matches = b.jobs.filter(j => (j.title + ' ' + j.location).toLowerCase().includes(q.toLowerCase())), shown = matches.slice(0, 100);
