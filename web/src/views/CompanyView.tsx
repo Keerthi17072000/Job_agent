@@ -16,11 +16,15 @@ export default function CompanyView() {
   if (!st.profile) return <EmptyCard title="Upload your resume first" body="Openings are scored against your resume." cta={{ href: '#/overview', label: 'Upload resume' }} />;
   const go = async () => {
     if (name.trim().length < 2) return; setBusy(true); setRes(null); setQ('');
-    try { setRes({ asked: name.trim(), boards: await api.lookupCompany(name.trim()) }); } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+    setPRes([]);
+    try {
+      const asked = name.trim(), boards = await api.lookupCompany(asked); setRes({ asked, boards });
+      if (!boards.length && ext) { setBusy(false); for (const [id, l] of [['naukri', 'Naukri'], ['indeed', 'Indeed']]) await viaPortal(id, l, asked); } // no public board: read the portals for the user right away
+    } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
-  const viaPortal = async (id: string, label: string) => {
+  const viaPortal = async (id: string, label: string, company = res?.asked || name.trim()) => {
     setPBusy(id);
-    try { const r = await api.companyPortalSearch(id, res?.asked || name.trim()); setPRes(x => [...x.filter(y => y.portal !== label), { portal: label, jobs: r.jobs, others: r.others, note: r.blocked ?? r.error }]); }
+    try { const r = await api.companyPortalSearch(id, company); setPRes(x => [...x.filter(y => y.portal !== label), { portal: label, jobs: r.jobs, others: r.others, note: r.blocked ?? r.error }]); }
     catch (e) { setMsg((e as Error).message); } finally { setPBusy(''); }
   };
   const role = st.prefs?.roles[0] ?? '', loc = st.prefs?.locations[0] ?? '';
