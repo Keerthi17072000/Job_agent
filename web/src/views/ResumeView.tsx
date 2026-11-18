@@ -1,5 +1,6 @@
 import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import { atsScore, bullets, flatSkills } from '../../../engine/ats.ts';
+import { improve } from '../../../engine/improve.ts';
 import { buildDocx } from '../docx.ts';
 import { CATEGORIES, TEMPLATE_DEFS, atsLayout, atsSafe, paperProps, templateById, type TemplateDef } from '../templates.ts';
 import { api } from '../api.ts';
@@ -40,6 +41,7 @@ export default function ResumeView() {
   const [p, setP] = useState<Profile | null>(null);
   const [tpl, setTplState] = useState(() => { try { return templateById(localStorage.getItem('ja.template')).id; } catch { return TEMPLATE_DEFS[0].id; } });
   const def = templateById(tpl);
+  const [report, setReport] = useState<{ changes: string[]; todo: string[]; before: number; after: number; undo: Profile; tplChanged: boolean } | null>(null);
   const [cat, setCat] = useState(def.category);
   // Reload the editable copy only when the SAVED profile really changed (new upload, save). Other reloads, such as adding a photo, must not discard unsaved edits.
   const saved = useRef('');
@@ -54,6 +56,12 @@ export default function ResumeView() {
   const suggested = templateById(ats.words > 650 ? 'compact' : p.totalExperienceYears < 2 ? 'modern' : 'classic');
   const suggestWhy = ats.words > 650 ? 'Your resume is long; Compact fits more on a page in a single column that ATS software reads in order.' : p.totalExperienceYears < 2 ? 'A clean single-column layout with clear headings suits an early-career resume and is read reliably by ATS software.' : 'A traditional single-column layout with standard headings is the safest choice for ATS software.';
   const setTpl = (t: string) => { setTplState(t); try { localStorage.setItem('ja.template', t); } catch { /* storage blocked: choice just will not persist */ } };
+  const analyse = () => { // rule-based: rewords, fills the summary, lists skills already in the text, and moves to an ATS-friendly template
+    const useT = atsSafe(def) ? def : suggested, r = improve(p, atsLayout(useT));
+    setReport({ changes: r.changes, todo: r.todo, before: ats.score, after: r.after, undo: p, tplChanged: useT.id !== def.id }); setP(r.profile);
+    if (useT.id !== def.id) { setTpl(useT.id); setCat(useT.category); }
+  };
+  const original = () => { setTpl(TEMPLATE_DEFS[0].id); setCat(TEMPLATE_DEFS[0].category); setMsg('Back to the original layout.'); };
   const up = (patch: Partial<Profile>) => setP({ ...p, ...patch });
   const setSkills = (list: string[]) => { // keep each skill in its category; new ones go to "other"
     const want = new Map(list.map(s => [s.toLowerCase(), s]));
@@ -115,7 +123,16 @@ export default function ResumeView() {
           {st.photo && <Button variant="outline" onClick={() => setPhoto(null)}>Remove photo</Button>}</div>
         <p className="text-xs text-mute">JPG or PNG. It is cropped to a square and kept only in this browser. It appears in the PDF, not in the Word file.</p></Card>}
 
+      <Card className="space-y-3 border-2 border-brand"><h3 className="font-extrabold">Analyse and auto-improve</h3>
+        <p className="text-sm text-mute">Reads your resume, rewords weak bullets, writes a missing summary, adds skills your text already mentions and switches to an ATS-friendly template. It never invents jobs, numbers or skills.</p>
+        <Button className="w-full" onClick={analyse}>Analyse and improve my resume</Button>
+        {report && <div className="space-y-2 text-sm"><p className="font-bold">ATS score {report.before} → {report.after}{report.tplChanged && ` (template changed to ${def.name})`}</p>
+          {report.changes.length ? <ul className="list-disc space-y-1 pl-5">{report.changes.map(c => <li key={c}>{c}</li>)}</ul> : <p className="text-mute">Nothing could be rewritten automatically.</p>}
+          {!!report.todo.length && <><p className="font-bold">Still needs you (real facts only you know):</p><ul className="list-disc space-y-1 pl-5 text-mute">{report.todo.map(c => <li key={c}>{c}</li>)}</ul></>}
+          <div className="flex gap-2"><Button variant="outline" className="h-9" onClick={() => { setP(report.undo); setReport(null); }}>Undo</Button><span className="self-center text-xs text-mute">Changes are not saved until you press Save changes.</span></div></div>}</Card>
+
       <Card className="space-y-3"><h3 className="font-extrabold">Template <span className="font-medium text-mute">({TEMPLATE_DEFS.length})</span></h3>
+        <Button variant="outline" className="h-9" onClick={original} disabled={tpl === TEMPLATE_DEFS[0].id}>Original layout</Button>
         <div role="tablist" aria-label="Template category" className="flex flex-wrap gap-1.5">{CATEGORIES.map(c => <button key={c} type="button" role="tab" aria-selected={cat === c} onClick={() => setCat(c)}
           className={cn('rounded-full px-3 py-1.5 text-xs font-semibold transition-colors', cat === c ? 'bg-ink text-canvas' : 'bg-sunk text-mute hover:text-ink')}>{c}</button>)}</div>
         <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Template">{TEMPLATE_DEFS.filter(d => d.category === cat).map(d => <button key={d.id} type="button" role="radio" aria-checked={tpl === d.id} aria-label={d.name} onClick={() => setTpl(d.id)}

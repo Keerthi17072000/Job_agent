@@ -408,3 +408,18 @@ test('private-use / control bullet glyphs never leak into the text or create fak
   assert.equal(p.projects.length, 1);
   assert.equal(p.projects[0].name, 'Shop');
 });
+
+test('improve() rewords weak bullets, fills a missing summary and adds skills already in the text, without inventing facts', async () => {
+  const { improve } = await import('./improve.ts');
+  const p = parseLocal(FX.centered);
+  p.summary = ''; p.experience[0].summary = '• Responsible for audit of client books;\n• responsible for audit of client books\n• Worked on GST filing using tally';
+  const r = improve(p);
+  const b = r.profile.experience[0].summary.split('\n');
+  assert.equal(b[0], 'Managed audit of client books');
+  assert.equal(b.length, 2); // the duplicate is gone
+  assert.ok(/^Contributed to GST filing/.test(b[1]));
+  assert.ok(r.profile.summary.length >= 40);
+  assert.ok(r.profile.allSkills.includes('tally'));
+  assert.ok(r.after >= r.before);
+  assert.equal(p.experience[0].summary.includes('Responsible'), true); // input is not mutated
+});
