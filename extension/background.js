@@ -23,7 +23,7 @@ const runSearch = url => queue = queue.catch(() => {}).then(async () => {
 chrome.runtime.onMessage.addListener((msg, _s, reply) => {
   if (msg.type === 'search') {
     if (!allowed(msg.url)) { reply({ jobs: [], error: 'That address is not a supported portal.' }); return; }
-    runSearch(msg.url).then(reply, e => reply({ jobs: [], error: e.message }));
+    runSearch(msg.url).then(reply, e => reply({ jobs: [], error: `Search failed: ${e.message}` }));
     return true;
   }
   chrome.storage.local.get({ pending: [] }).then(({ pending }) => {

@@ -6,5 +6,5 @@ window.addEventListener('message', e => {
   const d = e.data, back = payload => window.postMessage({ type: 'jobagent-reply', id: d.id, ...payload }, location.origin);
   if (d.type === 'jobagent-pull') ask({ type: 'take' }, r => window.postMessage({ type: 'jobagent-jobs', jobs: r?.jobs ?? [] }, location.origin), () => {});
   else if (d.type === 'jobagent-ping') { try { back({ ok: true, version: chrome.runtime.getManifest().version }); } catch { /* extension reloaded: stays undetected until the page is refreshed */ } }
-  else if (d.type === 'jobagent-search' && typeof d.url === 'string') ask({ type: 'search', url: d.url }, r => back(r ?? { jobs: [], error: 'The extension did not answer.' }), () => back({ jobs: [], error: 'The extension was reloaded. Refresh this page (F5) and try again.' }));
+  else if (d.type === 'jobagent-search' && typeof d.url === 'string') ask({ type: 'search', url: d.url }, r => back(r ?? { jobs: [], error: `The extension did not answer${chrome.runtime.lastError ? ': ' + chrome.runtime.lastError.message : ''}.` }), () => back({ jobs: [], error: 'The extension was reloaded. Refresh this page (F5) and try again.' }));
 });
