@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api, PORTALS, type Job } from '../api.ts';
 import { Badge, Button, Card, Input, LinkButton, ScoreRing } from '../ui.tsx';
 import { useApp } from '../state.tsx';
@@ -10,6 +10,7 @@ type Result = { label: string; company: Company; jobs: Job[] };
 /** Look up any company's openings: its public job board is found from its name, no setup. */
 export default function CompanyView() {
   const { st, setMsg, load, ext } = useApp();
+  const gen = useRef(0); // bumping it abandons the running portal search and the ones queued after it
   const [pBusy, setPBusy] = useState(''), [pRes, setPRes] = useState<{ portal: string; jobs: Job[]; others: number; note?: string }[]>([]);
   const [name, setName] = useState(''), [busy, setBusy] = useState(false), [res, setRes] = useState<{ asked: string; boards: Result[] } | null>(null), [q, setQ] = useState('');
   if (!st) return null;
@@ -20,14 +21,15 @@ export default function CompanyView() {
     try {
       const asked = name.trim(), boards = await api.lookupCompany(asked); setRes({ asked, boards });
       // no public board: read the main portals now, the rest on request (each one opens a tab)
-      if (!boards.length && ext) { setBusy(false); for (const p of PORTALS.filter(p => ['naukri', 'indeed', 'linkedin'].includes(p.id))) await viaPortal(p.id, p.name, asked); }
+      if (!boards.length && ext) { setBusy(false); const g = gen.current; for (const p of PORTALS.filter(p => ['naukri', 'indeed', 'linkedin'].includes(p.id))) if (g === gen.current) await viaPortal(p.id, p.name, asked); }
     } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   const viaPortal = async (id: string, label: string, company = res?.asked || name.trim()) => {
-    setPBusy(id);
-    try { const r = await api.companyPortalSearch(id, company); setPRes(x => [...x.filter(y => y.portal !== label), { portal: label, jobs: r.jobs, others: r.others, note: r.blocked ?? r.error }]); }
-    catch (e) { setMsg((e as Error).message); } finally { setPBusy(''); }
+    const g = gen.current; setPBusy(id);
+    try { const r = await api.companyPortalSearch(id, company); if (g !== gen.current) return; setPRes(x => [...x.filter(y => y.portal !== label), { portal: label, jobs: r.jobs, others: r.others, note: r.blocked ?? r.error }]); }
+    catch (e) { if (g === gen.current) setMsg((e as Error).message); } finally { if (g === gen.current) setPBusy(''); }
   };
+  const stop = () => { gen.current++; setPBusy(''); setMsg('Portal search stopped. A page already opened in a tab can be closed by hand.'); };
   const role = st.prefs?.roles[0] ?? '', loc = st.prefs?.locations[0] ?? '';
   return <div className="view space-y-5">
     <Card className="space-y-3"><h2 className="text-lg font-extrabold">Find a company's openings</h2>
@@ -43,7 +45,8 @@ export default function CompanyView() {
     {res && <Card className="space-y-3"><p className="font-extrabold">Also look on the job portals</p>
       <p className="text-sm text-mute">{ext ? 'Reads each portal in your own browser (one page each, only when you click) and keeps listings that name this company.' : 'Needs the Job Agent extension: install it from Sources, then come back.'}</p>
       <div className="flex flex-wrap gap-2">{PORTALS.filter(p => p.extension).map(p => [p.id, p.name]).map(([id, l]) => <Button key={id} variant="outline" disabled={!ext || !!pBusy} onClick={() => void viaPortal(id, l)}>{pBusy === id ? <><span className="spinner" />Reading {l}…</> : `Search ${l}`}</Button>)}
-        <Button variant="lime" disabled={!ext || !!pBusy} onClick={async () => { for (const p of PORTALS.filter(p => p.extension)) await viaPortal(p.id, p.name); }}>Search all portals</Button></div></Card>}
+        <Button variant="lime" disabled={!ext || !!pBusy} onClick={async () => { const g = gen.current; for (const p of PORTALS.filter(p => p.extension)) if (g === gen.current) await viaPortal(p.id, p.name); }}>Search all portals</Button>
+        {!!pBusy && <Button variant="outline" onClick={stop}>Stop</Button>}</div></Card>}
     {pRes.map(r => <section key={r.portal} className="space-y-3" aria-label={`${r.portal} openings`}><Card className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-base font-extrabold">{r.portal}: {r.jobs.length} at {res?.asked}</h3>
       <p className="text-xs text-mute">{r.note ?? (r.others ? `${r.others} other listings from different companies were left out.` : 'Listings read from the page.')}</p></div>
       {!!r.jobs.length && <Button variant="lime" onClick={async () => { const n = await api.saveJobs(r.jobs); await load(); setMsg(`${n} openings saved to your jobs.`); }}>Save these jobs</Button>}</Card>
