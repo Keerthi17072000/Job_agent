@@ -423,3 +423,9 @@ test('improve() rewords weak bullets, fills a missing summary and adds skills al
   assert.ok(r.after >= r.before);
   assert.equal(p.experience[0].summary.includes('Responsible'), true); // input is not mutated
 });
+
+test('ATS verb check accepts imperative bullets like "Develop and maintain" and still rejects non-verbs', async () => {
+  const { isActionBullet } = await import('./ats.ts');
+  for (const b of ['Develop and maintain responsive pages', 'Build reusable components', 'Troubleshoot UI issues', 'Integrate REST APIs', 'Managed a team']) assert.ok(isActionBullet(b), b);
+  for (const b of ['Responsible for the team', 'Excellent communication skills', 'The project was delivered']) assert.ok(!isActionBullet(b), b);
+});

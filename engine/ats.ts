@@ -4,6 +4,10 @@ import type { Job, Profile } from './types.ts';
 
 export const ACTION = /^(led|built|designed|developed|managed|created|implemented|improved|increased|reduced|delivered|launched|drove|owned|optimi[sz]ed|automated|migrated|analy[sz]ed|coordinated|trained|negotiated|achieved|established|streamlined|supervised|maintained|resolved|conducted|prepared|handled|generated|grew|spearheaded|executed|planned|organi[sz]ed|collaborated|architected|mentored|wrote|tested|deployed|supported|administered|processed|taught|researched|produced|presented|sold|served|provided|performed|monitored|ensured|worked|shipped|integrated|refactored|scaled|cut|saved|won|closed|recruited|audited|reconciled)\b/i;
 
+// bullets written in the imperative ("Build", "Integrate") are as good as past tense; ACTION itself stays strict because the parser uses it to spot header lines
+const BASE = /^(?:lead|build|design|develop|manage|create|implement|improve|increase|reduce|deliver|launch|drive|own|optimi[sz]e|automate|migrate|analy[sz]e|coordinate|train|negotiate|achieve|establish|streamline|supervise|maintain|resolve|conduct|prepare|handle|generate|grow|spearhead|execute|plan|organi[sz]e|collaborate|architect|mentor|write|test|deploy|support|administer|process|teach|research|produce|present|sell|serve|provide|perform|monitor|ensure|work|ship|integrate|refactor|scale|save|win|close|recruit|audit|reconcile|troubleshoot|debug|implement|configure|document|review|assist|contribute|participate|identify|define|construct|enhance|drive|oversee|publish|resolve|install|upgrade|apply|use|leverage|streamline|translate|convert|validate|verify|investigate|evaluate|assess|facilitate|partner|communicate|engage|handle|track|report|explain|advise|consult|operate|launch|raise|reach|rebuild|redesign|rewrite|update|maintain|upload|import|export|fix|resolve)(?:s|e?d|ing)?\b/i;
+export const isActionBullet = (b: string) => ACTION.test(b) || BASE.test(b);
+
 /** Bullet lines of a role description (one per line, bullet characters removed). */
 export const bullets = (s: string) => (s ?? '').split('\n').map(l => l.replace(/^[\s•●▪■◦·*\-–—>]+/, '').trim()).filter(Boolean);
 export const flatSkills = (p: Profile) => [...new Map(Object.values(p.skills).flat().map(s => [s.toLowerCase(), s])).values()];
@@ -43,7 +47,7 @@ export function atsScore(p: Profile, jobs: Pick<Job, 'requiredSkills' | 'score'>
 
   const all = p.experience.flatMap(e => bullets(e.summary));
   add('bullets', 'Achievement bullets', all.length >= 6 ? 5 : all.length >= 3 ? 3 : all.length ? 1 : 0, 5, `You have ${all.length} bullet line(s). Give each role 3 to 5 short bullets.`);
-  const verbs = all.filter(b => ACTION.test(b)).length, nums = all.filter(b => /\d/.test(b)).length;
+  const verbs = all.filter(isActionBullet).length, nums = all.filter(b => /\d/.test(b)).length;
   add('verbs', 'Bullets start with action verbs', all.length ? Math.min(5, 5 * (verbs / all.length) / 0.6) : 0, 5, 'Start bullets with a verb such as Built, Led, Reduced, Managed.');
   add('metrics', 'Results with numbers', all.length ? Math.min(10, 10 * (nums / all.length) / 0.4) : 0, 10, `${nums} of ${all.length} bullets contain a number. Add results such as "cut load time by 30%" or "managed 12 accounts" where they are true.`);
 
