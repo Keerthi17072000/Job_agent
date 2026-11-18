@@ -143,7 +143,7 @@ export default function ResumeView() {
       <Card className="space-y-3"><h3 className="font-extrabold">Save and download</h3>
         <Button variant="lime" className="w-full" disabled={busy || !dirty} onClick={() => saveProfile(p, st.prefs!)}>{dirty ? 'Save changes' : 'All changes saved'}</Button>
         <div className="grid grid-cols-2 gap-2"><Button onClick={() => window.print()}>Save as PDF</Button><Button variant="outline" onClick={word}>Download Word</Button></div>
-        <p className="text-xs text-mute">“Save as PDF” opens your browser's print window: choose <b>Save as PDF</b> as the destination. Saving changes also updates your job matches.</p>
+        <p className="text-xs text-mute">“Save as PDF” opens your browser's print window: choose <b>Save as PDF</b> as the destination. Then open <b>More settings</b> and untick <b>Headers and footers</b> (that removes the date, page title and web address your browser prints on every page), and tick <b>Background graphics</b> so template colours show. Saving changes also updates your job matches.</p>
         <ReplaceResume className="w-full justify-center" /><p className="text-xs text-mute">Upload a resume (including one you downloaded here) to analyse it again.</p></Card>
       {dirty && <Badge tone="warn">Unsaved edits</Badge>}
     </aside>
