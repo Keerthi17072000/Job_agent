@@ -17,7 +17,8 @@ if (S.siteFor(location.hostname)) {
   send.onclick = () => {
     const { jobs, via } = S.extract(document, location);
     if (!jobs.length) { send.textContent = 'Found nothing on this page. Try Diagnose.'; return reset(); }
-    chrome.runtime.sendMessage({ type: 'add', jobs }, r => { send.textContent = r ? `Collected ${jobs.length} (${r.total} waiting). Open Job Agent to import.` : 'Failed'; console.debug('[Job Agent] via', via); reset(); });
+    const done = r => { send.textContent = r ? `Collected ${jobs.length} (${r.total} waiting). Open Job Agent to import.` : 'Failed'; console.debug('[Job Agent] via', via); reset(); };
+    try { chrome.runtime.sendMessage({ type: 'add', jobs }, done); } catch { send.textContent = 'Extension was reloaded. Refresh this page (F5) and click again.'; reset(); }
   };
   diag.onclick = async () => {
     const out = S.diagnose(document, location);
