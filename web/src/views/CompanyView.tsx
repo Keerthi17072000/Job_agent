@@ -19,7 +19,7 @@ export default function CompanyView() {
     setPRes([]);
     try {
       const asked = name.trim(), boards = await api.lookupCompany(asked); setRes({ asked, boards });
-      if (!boards.length && ext) { setBusy(false); for (const [id, l] of [['naukri', 'Naukri'], ['indeed', 'Indeed']]) await viaPortal(id, l, asked); } // no public board: read the portals for the user right away
+      if (!boards.length && ext) { setBusy(false); for (const p of PORTALS.filter(p => ['naukri', 'indeed', 'linkedin'].includes(p.id))) await viaPortal(p.id, p.name, asked); // the rest on request: each one opens a tab } // no public board: read the portals for the user right away
     } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   const viaPortal = async (id: string, label: string, company = res?.asked || name.trim()) => {
@@ -39,13 +39,17 @@ export default function CompanyView() {
       <div className="flex flex-wrap gap-2"><LinkButton href={`https://www.google.com/search?q=${encodeURIComponent(res.asked + ' careers jobs')}`}>Search the web</LinkButton>
         {PORTALS.filter(p => ['linkedin', 'naukri', 'indeed'].includes(p.id)).map(p => <LinkButton key={p.id} href={p.searchUrl(res.asked, '')}>{p.name}</LinkButton>)}</div></Card>}
 
-    {res && <Card className="space-y-3"><p className="font-extrabold">Also look on Naukri and Indeed</p>
-      <p className="text-sm text-mute">{ext ? 'Reads those sites in your own browser (one page each, only when you click) and keeps listings that name this company.' : 'Needs the Job Agent extension: install it from Sources, then come back.'}</p>
-      <div className="flex flex-wrap gap-2">{[['naukri', 'Naukri'], ['indeed', 'Indeed']].map(([id, l]) => <Button key={id} variant="outline" disabled={!ext || !!pBusy} onClick={() => void viaPortal(id, l)}>{pBusy === id ? <><span className="spinner" />Reading {l}…</> : `Search ${l}`}</Button>)}</div></Card>}
+    {res && <Card className="space-y-3"><p className="font-extrabold">Also look on the job portals</p>
+      <p className="text-sm text-mute">{ext ? 'Reads each portal in your own browser (one page each, only when you click) and keeps listings that name this company.' : 'Needs the Job Agent extension: install it from Sources, then come back.'}</p>
+      <div className="flex flex-wrap gap-2">{PORTALS.filter(p => p.extension).map(p => [p.id, p.name]).map(([id, l]) => <Button key={id} variant="outline" disabled={!ext || !!pBusy} onClick={() => void viaPortal(id, l)}>{pBusy === id ? <><span className="spinner" />Reading {l}…</> : `Search ${l}`}</Button>)}
+        <Button variant="lime" disabled={!ext || !!pBusy} onClick={async () => { for (const p of PORTALS.filter(p => p.extension)) await viaPortal(p.id, p.name); }}>Search all portals</Button></div></Card>}
     {pRes.map(r => <section key={r.portal} className="space-y-3" aria-label={`${r.portal} openings`}><Card className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-base font-extrabold">{r.portal}: {r.jobs.length} at {res?.asked}</h3>
       <p className="text-xs text-mute">{r.note ?? (r.others ? `${r.others} other listings from different companies were left out.` : 'Listings read from the page.')}</p></div>
       {!!r.jobs.length && <Button variant="lime" onClick={async () => { const n = await api.saveJobs(r.jobs); await load(); setMsg(`${n} openings saved to your jobs.`); }}>Save these jobs</Button>}</Card>
-      <div className="grid gap-3 xl:grid-cols-2">{r.jobs.map(j => <Card key={j.id} className="flex items-center gap-4 p-4"><ScoreRing score={j.score} size={48} /><div className="min-w-0 flex-1"><p className="font-extrabold leading-snug">{j.title}</p><p className="truncate text-xs text-mute">{j.location || 'Location not stated'}</p></div><LinkButton href={j.url}>Open</LinkButton></Card>)}</div></section>)}
+      <div className="grid gap-3 xl:grid-cols-2">{r.jobs.map(j => <Card key={j.id} className="space-y-2 p-4"><div className="flex items-center gap-4"><ScoreRing score={j.score} size={48} /><div className="min-w-0 flex-1"><p className="font-extrabold leading-snug">{j.title}</p><p className="truncate text-xs text-mute">{[j.company, j.location || 'Location not stated', j.workMode, j.postedAt && `posted ${day(j.postedAt)}`].filter(Boolean).join(' · ')}</p></div><LinkButton href={j.url}>Open</LinkButton></div>
+        <div className="flex flex-wrap gap-1"><Badge tone="brand">{r.portal}</Badge>{(j.expLevel || j.expMin != null) && <Badge tone="mute">{j.expMin != null ? `${j.expMin}${j.expMax != null && j.expMax !== j.expMin ? `-${j.expMax}` : ''} yrs` : j.expLevel}</Badge>}{j.salary && <Badge tone="mute">{j.salary}</Badge>}<Badge tone={j.score >= 75 ? 'good' : 'mute'}>{j.category}</Badge></div>
+        {!!(j.requiredSkills.length) && <p className="text-xs text-mute"><b>Skills:</b> {j.requiredSkills.slice(0, 10).map(k => j.matchedSkills.includes(k) ? `${k} ✓` : k).join(', ')}</p>}
+        {(j.description || j.summary) && <details className="text-sm"><summary className="cursor-pointer text-xs font-bold text-brand">Details</summary><p className="mt-1 whitespace-pre-line text-mute">{(j.description || j.summary).slice(0, 1500)}</p></details>}</Card>)}</div></section>)}
 
     {res?.boards.map(b => { // big boards (hundreds of openings) show the best 100; the filter narrows the rest
       const matches = b.jobs.filter(j => (j.title + ' ' + j.location).toLowerCase().includes(q.toLowerCase())), shown = matches.slice(0, 100);
