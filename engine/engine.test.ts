@@ -409,19 +409,20 @@ test('private-use / control bullet glyphs never leak into the text or create fak
   assert.equal(p.projects[0].name, 'Shop');
 });
 
-test('improve() rewords weak bullets, fills a missing summary and adds skills already in the text, without inventing facts', async () => {
-  const { improve } = await import('./improve.ts');
+test('suggest() proposes edits, placeholders earn no score, and accepting everything never lowers the score', async () => {
+  const { suggest, scoreWith } = await import('./improve.ts');
+  const { atsScore } = await import('./ats.ts');
   const p = parseLocal(FX.centered);
-  p.summary = ''; p.experience[0].summary = '• Responsible for audit of client books;\n• responsible for audit of client books\n• Worked on GST filing using tally';
-  const r = improve(p);
-  const b = r.profile.experience[0].summary.split('\n');
-  assert.equal(b[0], 'Managed audit of client books');
-  assert.equal(b.length, 2); // the duplicate is gone
-  assert.ok(/^Contributed to GST filing/.test(b[1]));
-  assert.ok(r.profile.summary.length >= 40);
-  assert.ok(r.profile.allSkills.includes('tally'));
-  assert.ok(r.after >= r.before);
-  assert.equal(p.experience[0].summary.includes('Responsible'), true); // input is not mutated
+  p.summary = ''; p.phone = ''; p.experience[0].summary = '• Responsible for audit of client books;\n• responsible for audit of client books\n• Worked on GST filing using tally';
+  const ch = suggest(p), by = Object.fromEntries(ch.map(c => [c.id, c]));
+  assert.ok(by.reword.after.startsWith('Managed audit of client books\nContributed to GST filing'));
+  assert.ok(by.summary.after.length >= 40 && by.contact.after.includes('[Add phone number]') && by.numbers.after.includes('[add a number'));
+  assert.ok(p.experience[0].summary.includes('Responsible')); // input untouched
+  const all = ch.reduce((q, c) => c.apply(q), p);
+  assert.ok(atsScore(all).score >= atsScore(p).score, 'placeholders must not lower the score');
+  assert.equal(atsScore(all).checks.find(c => c.id === 'contact')!.got, atsScore(p).checks.find(c => c.id === 'contact')!.got); // a placeholder phone earns nothing
+  assert.equal(scoreWith(p, ch, []), atsScore(all).score);
+  assert.deepEqual(ch.map(c => c.apply(p) && 1).length, ch.length);
 });
 
 test('ATS verb check accepts imperative bullets like "Develop and maintain" and still rejects non-verbs', async () => {

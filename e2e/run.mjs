@@ -267,6 +267,21 @@ await test('Word layouts: tab columns, soft line breaks and layout tables are re
   await page.goto(BASE + '#/resume'); await page.waitForSelector('article.resume-page');
   assert.equal(await page.locator('article h1').innerText(), 'PRIYA NAIR'); assert.match(await page.locator('article').innerText(), /Staff Nurse/); assert.match(await page.locator('article').innerText(), /City Hospital/); assert.match(await page.locator('article').innerText(), /98450/);
 });
+await test('analyse proposes highlighted edits, applies them only on Accept, and placeholders never lower the score', async page => {
+  const txt = ['MEERA JOSHI', 'Frontend Developer', 'meera.joshi@example.com', '', 'SUMMARY', 'Frontend developer.', '', 'SKILLS', 'React, JavaScript, HTML, CSS', '', 'EXPERIENCE', 'Frontend Developer', 'Acme Software Pvt Ltd', 'Jan 2021 - Present',
+    '- Responsible for building pages in React', '- Worked on API integration', '', 'EDUCATION', 'B.E Computer Science, Test College of Engineering, 2020'].join('\n');
+  await home(page); await uploadAndSearch(page, file('meera.txt', txt), 'Meera');
+  await page.goto(BASE + '#/resume'); await page.waitForSelector('article.resume-page');
+  const art = page.locator('article'), before = await art.innerText();
+  await page.getByRole('button', { name: 'Analyse my resume' }).click(); await page.waitForSelector('text=ATS score now');
+  assert.ok(await page.locator('aside button', { hasText: /^Accept$/ }).count() >= 1, 'edits proposed'); assert.equal(await art.innerText(), before, 'nothing changes until Accept');
+  await page.locator('aside button', { hasText: /^Accept$/ }).first().click();
+  assert.notEqual(await art.innerText(), before, 'Accept edits the resume directly');
+  await page.getByRole('button', { name: 'Accept all edits' }).click();
+  const after = await art.innerText(); assert.match(after, /Managed building pages in React/); assert.match(after, /\[Add phone number\]/); assert.match(after, /\[add a number/);
+  await page.waitForSelector('text=placeholder'); // the badge reminding to replace them
+});
+
 
 await test('phone layout has no horizontal overflow; theme toggle works', async page => {
   await page.setViewportSize({ width: 400, height: 800 }); await home(page); await upload(page, file('asha.txt', RESUME_DEV)); await page.waitForSelector('text=Hello, Asha');

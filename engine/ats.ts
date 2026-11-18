@@ -29,15 +29,18 @@ export interface AtsCheck { id: string; label: string; got: number; max: number;
 export interface AtsResult { score: number; checks: AtsCheck[]; missingKeywords: string[]; words: number }
 
 /** `layout` describes the chosen template: columns and photos change how reliably ATS software reads a resume. */
+const PH = /\s*\[[^\]]*\]/g; // "[add a number]" placeholders left by the improver never earn points
+export const hasPlaceholder = (s: string) => /\[[^\]]*\]/.test(s);
+
 export function atsScore(p: Profile, jobs: Pick<Job, 'requiredSkills' | 'score'>[] = [], layout?: { twoColumn: boolean; photo: boolean }): AtsResult {
   const checks: AtsCheck[] = [];
   const add = (id: string, label: string, got: number, max: number, tip: string) => checks.push({ id, label, got: Math.round(got * 10) / 10, max, tip: got >= max ? '' : tip });
 
-  const missingContact = [!p.name && 'name', !/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(p.email) && 'email', p.phone.replace(/\D/g, '').length < 8 && 'phone', !p.location && 'location'].filter(Boolean);
-  add('contact', 'Contact details', (p.name ? 2 : 0) + (missingContact.includes('email') ? 0 : 5) + (missingContact.includes('phone') ? 0 : 5) + (p.location ? 3 : 0), 15, `Add your ${missingContact.join(', ')} at the top.`);
+  const missingContact = [!p.name && 'name', !/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(p.email) && 'email', p.phone.replace(/\D/g, '').length < 8 && 'phone', (!p.location || hasPlaceholder(p.location)) && 'location'].filter(Boolean);
+  add('contact', 'Contact details', (p.name ? 2 : 0) + (missingContact.includes('email') ? 0 : 5) + (missingContact.includes('phone') ? 0 : 5) + (p.location && !hasPlaceholder(p.location) ? 3 : 0), 15, `Add your ${missingContact.join(', ')} at the top.`);
 
-  const missingSec = [p.summary.length < 40 && 'a 2-3 line summary', !p.allSkills.length && 'a skills section', !p.experience.length && 'work experience', !p.education.length && 'education'].filter(Boolean);
-  add('sections', 'Standard sections', (p.summary.length >= 40 ? 5 : 0) + (p.allSkills.length ? 5 : 0) + (p.experience.length ? 10 : 0) + (p.education.length ? 5 : 0), 25, `Add ${missingSec.join(', ')}. ATS software looks for these headings.`);
+  const missingSec = [(p.summary.replace(PH, '').length < 40) && 'a 2-3 line summary', !p.allSkills.length && 'a skills section', !p.experience.length && 'work experience', !p.education.length && 'education'].filter(Boolean);
+  add('sections', 'Standard sections', (p.summary.replace(PH, '').length >= 40 ? 5 : 0) + (p.allSkills.length ? 5 : 0) + (p.experience.length ? 10 : 0) + (p.education.length ? 5 : 0), 25, `Add ${missingSec.join(', ')}. ATS software looks for these headings.`);
 
   const n = p.allSkills.length;
   add('skills', 'Skills listed', n >= 8 ? 10 : n >= 4 ? 5 : n ? 2 : 0, 10, `You list ${n} skill${n === 1 ? '' : 's'}. Aim for 8 or more that you really have, using the words job postings use.`);
@@ -45,7 +48,7 @@ export function atsScore(p: Profile, jobs: Pick<Job, 'requiredSkills' | 'score'>
   const complete = p.experience.filter(e => e.title && e.company && e.start && e.end).length;
   add('roles', 'Roles have title, company and dates', p.experience.length ? 10 * complete / p.experience.length : 0, 10, p.experience.length ? `${p.experience.length - complete} role(s) are missing a title, company or dates.` : 'Add each role with its title, company and dates.');
 
-  const all = p.experience.flatMap(e => bullets(e.summary));
+  const all = p.experience.flatMap(e => bullets(e.summary)).map(b => b.replace(PH, '').trim()).filter(Boolean);
   add('bullets', 'Achievement bullets', all.length >= 6 ? 5 : all.length >= 3 ? 3 : all.length ? 1 : 0, 5, `You have ${all.length} bullet line(s). Give each role 3 to 5 short bullets.`);
   const verbs = all.filter(isActionBullet).length, nums = all.filter(b => /\d/.test(b)).length;
   add('verbs', 'Bullets start with action verbs', all.length ? Math.min(5, 5 * (verbs / all.length) / 0.6) : 0, 5, 'Start bullets with a verb such as Built, Led, Reduced, Managed.');

@@ -1,6 +1,6 @@
 import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import { atsScore, bullets, flatSkills } from '../../../engine/ats.ts';
-import { improve } from '../../../engine/improve.ts';
+import { suggest, scoreWith, type Change } from '../../../engine/improve.ts';
 import { buildDocx } from '../docx.ts';
 import { CATEGORIES, TEMPLATE_DEFS, atsLayout, atsSafe, paperProps, templateById, type TemplateDef } from '../templates.ts';
 import { api } from '../api.ts';
@@ -41,7 +41,7 @@ export default function ResumeView() {
   const [p, setP] = useState<Profile | null>(null);
   const [tpl, setTplState] = useState(() => { try { return templateById(localStorage.getItem('ja.template')).id; } catch { return TEMPLATE_DEFS[0].id; } });
   const def = templateById(tpl);
-  const [report, setReport] = useState<{ changes: string[]; todo: string[]; before: number; after: number; undo: Profile; tplChanged: boolean } | null>(null);
+  const [review, setReview] = useState<{ changes: Change[]; tpl: boolean; allScore: number } | null>(null);
   const [cat, setCat] = useState(def.category);
   // Reload the editable copy only when the SAVED profile really changed (new upload, save). Other reloads, such as adding a photo, must not discard unsaved edits.
   const saved = useRef('');
@@ -56,11 +56,12 @@ export default function ResumeView() {
   const suggested = templateById(ats.words > 650 ? 'compact' : p.totalExperienceYears < 2 ? 'modern' : 'classic');
   const suggestWhy = ats.words > 650 ? 'Your resume is long; Compact fits more on a page in a single column that ATS software reads in order.' : p.totalExperienceYears < 2 ? 'A clean single-column layout with clear headings suits an early-career resume and is read reliably by ATS software.' : 'A traditional single-column layout with standard headings is the safest choice for ATS software.';
   const setTpl = (t: string) => { setTplState(t); try { localStorage.setItem('ja.template', t); } catch { /* storage blocked: choice just will not persist */ } };
-  const analyse = () => { // rule-based: rewords, fills the summary, lists skills already in the text, and moves to an ATS-friendly template
-    const useT = atsSafe(def) ? def : suggested, r = improve(p, atsLayout(useT));
-    setReport({ changes: r.changes, todo: r.todo, before: ats.score, after: r.after, undo: p, tplChanged: useT.id !== def.id }); setP(r.profile);
-    if (useT.id !== def.id) { setTpl(useT.id); setCat(useT.category); }
+  const analyse = () => { // proposes edits; nothing changes until you accept
+    const useT = atsSafe(def) ? def : suggested, changes = suggest(p);
+    setReview({ changes, tpl: useT.id !== def.id, allScore: scoreWith(p, changes, st.jobs, atsLayout(useT)) });
   };
+  const accept = (c: Change) => { const n = c.apply(p); setP(n); setReview(r => r && { ...r, changes: r.changes.filter(x => x.id !== c.id), allScore: scoreWith(n, r.changes.filter(x => x.id !== c.id), st.jobs, atsLayout(r.tpl ? suggested : def)) }); };
+  const acceptAll = () => { if (!review) return; setP(review.changes.reduce((q, c) => c.apply(q), p)); if (review.tpl) { setTpl(suggested.id); setCat(suggested.category); } setReview(null); setMsg('All suggested edits applied. Replace any [placeholder] with your real details, then Save changes.'); };
   const original = () => { setTpl(TEMPLATE_DEFS[0].id); setCat(TEMPLATE_DEFS[0].category); setMsg('Back to the original layout.'); };
   const up = (patch: Partial<Profile>) => setP({ ...p, ...patch });
   const setSkills = (list: string[]) => { // keep each skill in its category; new ones go to "other"
@@ -72,6 +73,7 @@ export default function ResumeView() {
   const setExp = (i: number, patch: Partial<Profile['experience'][0]>) => up({ experience: p.experience.map((e, j) => j === i ? { ...e, ...patch } : e) });
   const setEdu = (i: number, patch: Partial<Profile['education'][0]>) => up({ education: p.education.map((e, j) => j === i ? { ...e, ...patch } : e) });
   const setProj = (i: number, patch: Partial<Profile['projects'][0]>) => up({ projects: p.projects.map((e, j) => j === i ? { ...e, ...patch } : e) });
+  const holes = [p.summary, p.email, p.phone, p.location, ...p.experience.map(e => e.summary)].join('\n').match(/\[[^\]]*\]/g)?.length ?? 0;
   const dirty = JSON.stringify(p) !== JSON.stringify(st.profile);
   const fileBase = (p.name || 'resume').replace(/[^\w]+/g, '_');
   const word = async () => { try { download(await buildDocx(p, def), `${fileBase}.docx`); setMsg('Word file downloaded.'); } catch (e) { setMsg(`Could not build the Word file: ${(e as Error).message}`); } };
@@ -124,12 +126,20 @@ export default function ResumeView() {
         <p className="text-xs text-mute">JPG or PNG. It is cropped to a square and kept only in this browser. It appears in the PDF, not in the Word file.</p></Card>}
 
       <Card className="space-y-3 border-2 border-brand"><h3 className="font-extrabold">Analyse and auto-improve</h3>
-        <p className="text-sm text-mute">Reads your resume, rewords weak bullets, writes a missing summary, adds skills your text already mentions and switches to an ATS-friendly template. It never invents jobs, numbers or skills.</p>
-        <Button className="w-full" onClick={analyse}>Analyse and improve my resume</Button>
-        {report && <div className="space-y-2 text-sm"><p className="font-bold">ATS score {report.before} → {report.after}{report.tplChanged && ` (template changed to ${def.name})`}</p>
-          {report.changes.length ? <ul className="list-disc space-y-1 pl-5">{report.changes.map(c => <li key={c}>{c}</li>)}</ul> : <p className="text-mute">Nothing could be rewritten automatically.</p>}
-          {!!report.todo.length && <><p className="font-bold">Still needs you (real facts only you know):</p><ul className="list-disc space-y-1 pl-5 text-mute">{report.todo.map(c => <li key={c}>{c}</li>)}</ul></>}
-          <div className="flex gap-2"><Button variant="outline" className="h-9" onClick={() => { setP(report.undo); setReport(null); }}>Undo</Button><span className="self-center text-xs text-mute">Changes are not saved until you press Save changes.</span></div></div>}</Card>
+        <p className="text-sm text-mute">Finds edits that raise your ATS score and shows each one highlighted. Nothing changes until you accept it. Where a real fact is needed (phone, numbers) it adds a [placeholder] for you to replace; placeholders earn no points.</p>
+        <Button className="w-full" onClick={analyse}>Analyse my resume</Button>
+        {review && <div className="space-y-3 text-sm">
+          <p className="font-bold">ATS score now {ats.score}{review.changes.length || review.tpl ? ` → ${review.allScore} if you accept everything` : ''}</p>
+          {!review.changes.length && !review.tpl && <p className="text-mute">No more automatic edits. {ats.score < 100 ? 'Replace any [placeholders] with real details; the checks above show what is left.' : ''}</p>}
+          {review.tpl && <div className="rounded-xl border border-line p-3"><p className="font-semibold">Switch to {suggested.name}, an ATS-friendly template</p><p className="text-xs text-mute">{suggestWhy}</p>
+            <Button className="mt-2 h-9" onClick={() => { setTpl(suggested.id); setCat(suggested.category); setReview(r => r && { ...r, tpl: false }); }}>Accept</Button></div>}
+          {review.changes.map(c => { const was = new Set(c.before.split('\n')), now = new Set(c.after.split('\n'));
+            return <div key={c.id} className="space-y-2 rounded-xl border border-line p-3"><p className="font-semibold">{c.label}</p>
+              <div className="space-y-1 text-xs">{c.before.split('\n').filter(l => l && !now.has(l)).map((l, i) => <p key={`b${i}`} className="rounded bg-bad/15 px-2 py-1 line-through">{l}</p>)}
+                {c.after.split('\n').filter(l => l && !was.has(l)).map((l, i) => <p key={`a${i}`} className="rounded bg-lime/40 px-2 py-1 text-ink">{l}</p>)}</div>
+              <div className="flex gap-2"><Button className="h-9" onClick={() => accept(c)}>Accept</Button><Button variant="outline" className="h-9" onClick={() => setReview(r => r && { ...r, changes: r.changes.filter(x => x.id !== c.id) })}>Skip</Button></div></div>; })}
+          {review.changes.length > 1 && <Button variant="lime" className="w-full" onClick={acceptAll}>Accept all edits</Button>}
+          <p className="text-xs text-mute">Accepted edits are not saved until you press Save changes.</p></div>}</Card>
 
       <Card className="space-y-3"><h3 className="font-extrabold">Template <span className="font-medium text-mute">({TEMPLATE_DEFS.length})</span></h3>
         <Button variant="outline" className="h-9" onClick={original} disabled={tpl === TEMPLATE_DEFS[0].id}>Original layout</Button>
@@ -146,6 +156,7 @@ export default function ResumeView() {
         <p className="text-xs text-mute">“Save as PDF” opens your browser's print window: choose <b>Save as PDF</b> as the destination. Then open <b>More settings</b> and untick <b>Headers and footers</b> (that removes the date, page title and web address your browser prints on every page), and tick <b>Background graphics</b> so template colours show. Saving changes also updates your job matches.</p>
         <ReplaceResume className="w-full justify-center" /><p className="text-xs text-mute">Upload a resume (including one you downloaded here) to analyse it again.</p></Card>
       {dirty && <Badge tone="warn">Unsaved edits</Badge>}
+      {holes > 0 && <Badge tone="warn">{holes} [placeholder]{holes === 1 ? '' : 's'} left: replace before you download</Badge>}
     </aside>
 
     <div className="min-w-0"><p className="no-print mb-2 text-sm text-mute">Click any text on the page to edit it. Bullets: one per line.</p>

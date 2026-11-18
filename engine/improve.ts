@@ -1,51 +1,73 @@
-// Rule-based resume clean-up for the ATS score: no AI key, no invented facts. It only rewrites wording, fills the summary from
-// the resume's own data and lists skills the resume already mentions; what needs real facts (numbers, missing roles) is returned as todo.
-import { ACTION, atsScore, bullets, flatSkills } from './ats.ts';
+// Rule-based resume clean-up for the ATS score: no AI key, no invented facts. Each Change is one proposed edit the user accepts or
+// skips. Anything that needs a real fact (phone, numbers, what a role involved) becomes a [placeholder] that earns no score until replaced.
+import { atsScore, bullets, flatSkills, hasPlaceholder } from './ats.ts';
 import { GENERAL, TECH } from './lexicon.ts';
-import type { Profile } from './types.ts';
+import type { Job, Profile } from './types.ts';
 
 const WEAK: [RegExp, string][] = [[/^responsible for\s+/i, 'Managed '], [/^in charge of\s+/i, 'Led '], [/^(worked on|working on)\s+/i, 'Contributed to '],
   [/^(helped with|helping with|helped)\s+/i, 'Supported '], [/^(involved in|part of)\s+/i, 'Contributed to '], [/^(duties include|tasked with)\s+/i, 'Handled ']];
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const clone = (p: Profile): Profile => JSON.parse(JSON.stringify(p));
+const NUM_HINT = '[add a number: users, %, time saved or team size]';
 
-export interface Improvement { profile: Profile; changes: string[]; todo: string[]; before: number; after: number }
+export interface Change { id: string; label: string; before: string; after: string; placeholder?: boolean; apply: (p: Profile) => Profile }
 
-export function improve(p: Profile, layout?: { twoColumn: boolean; photo: boolean }): Improvement {
-  const before = atsScore(p, [], layout).score, changes: string[] = [];
-  const q: Profile = JSON.parse(JSON.stringify(p));
-
-  let reworded = 0;
-  q.experience = q.experience.map(e => {
-    const out = bullets(e.summary).map(b => {
-      let t = b.replace(/\s+/g, ' ').replace(/[;,]+$/, '').replace(/\.$/, '');
-      for (const [re, to] of WEAK) if (re.test(t)) { t = t.replace(re, to); break; }
-      t = t.charAt(0).toUpperCase() + t.slice(1);
-      if (t !== b) reworded++;
-      return t;
-    });
-    return { ...e, summary: [...new Set(out)].join('\n') };
-  });
-  if (reworded) changes.push(`Cleaned ${reworded} bullet${reworded === 1 ? '' : 's'}: removed stray symbols, capitalised, and replaced weak openers such as "Responsible for" with action verbs.`);
-
-  if (q.summary.trim().length < 40) {
-    const top = flatSkills(q).slice(0, 5), yrs = Math.round(q.totalExperienceYears), role = q.currentDesignation;
-    if (role && (top.length || yrs)) {
-      q.summary = `${role}${yrs ? ` with ${yrs}+ year${yrs === 1 ? '' : 's'} of experience` : ''}${top.length ? ` in ${top.slice(0, -1).join(', ')}${top.length > 1 ? ' and ' : ''}${top.at(-1)}` : ''}. Looking for a role where I can apply these skills and keep growing.`;
-      changes.push('Wrote a short summary from your title, experience and skills. Edit it so it sounds like you.');
-    }
-  }
-
-  const body = [q.summary, ...q.experience.map(e => e.summary), ...q.projects.map(x => `${x.description} ${x.tech.join(' ')}`)].join('\n').toLowerCase();
+const reword = (p: Profile): Profile => {
+  const q = clone(p);
+  q.experience = q.experience.map(e => ({ ...e, summary: [...new Set(bullets(e.summary).map(b => {
+    let t = b.replace(/\s+/g, ' ').replace(/[;,]+$/, '').replace(/\.$/, '');
+    for (const [re, to] of WEAK) if (re.test(t)) { t = t.replace(re, to); break; }
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }))].join('\n') }));
+  return q;
+};
+const fillSummary = (p: Profile): Profile => {
+  const q = clone(p); if (q.summary.replace(/\s*\[[^\]]*\]/g, '').trim().length >= 40) return q;
+  const top = flatSkills(q).slice(0, 5), yrs = Math.round(q.totalExperienceYears), role = q.currentDesignation;
+  if (role && (top.length || yrs)) q.summary = `${role}${yrs ? ` with ${yrs}+ year${yrs === 1 ? '' : 's'} of experience` : ''}${top.length ? ` in ${top.slice(0, -1).join(', ')}${top.length > 1 ? ' and ' : ''}${top.at(-1)}` : ''}. Looking for a role where I can apply these skills and keep growing.`;
+  return q;
+};
+const addSkills = (p: Profile): Profile => {
+  const q = clone(p), body = [q.summary, ...q.experience.map(e => e.summary), ...q.projects.map(x => `${x.description} ${x.tech.join(' ')}`)].join('\n').toLowerCase();
   const have = new Set(q.allSkills.map(s => s.toLowerCase()));
   const found = [...new Set([...TECH, ...GENERAL])].filter(s => s.length > 2 && !have.has(s) && new RegExp(`(^|[^a-z0-9+#])${esc(s)}(?![a-z0-9+#])`).test(body)).slice(0, 12);
-  if (found.length) {
-    q.skills.other = [...q.skills.other, ...found]; q.allSkills = [...q.allSkills, ...found];
-    changes.push(`Added ${found.length} skill${found.length === 1 ? '' : 's'} your resume text already mentions: ${found.join(', ')}.`);
-  }
+  if (found.length) { q.skills.other = [...q.skills.other, ...found]; q.allSkills = [...q.allSkills, ...found]; }
+  return q;
+};
+const contactHoles = (p: Profile): Profile => {
+  const q = clone(p);
+  if (q.phone.replace(/\D/g, '').length < 8) q.phone = '[Add phone number]';
+  if (!q.location) q.location = '[Add city]';
+  if (!/^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(q.email)) q.email = '[Add email]';
+  return q;
+};
+const emptyRoles = (p: Profile): Profile => { // a role with no bullets gets prompts, which earn nothing until they are replaced with what you really did
+  const q = clone(p);
+  q.experience = q.experience.map(e => bullets(e.summary).length ? e : { ...e, summary: '[Built / led / improved ... what you did and the result]\n[A second achievement, with a number]\n[A third achievement]' });
+  return q;
+};
+const numberHints = (p: Profile): Profile => { // the first three bullets without any number get a prompt to add one
+  const q = clone(p); let left = 3;
+  q.experience = q.experience.map(e => ({ ...e, summary: bullets(e.summary).map(b => left > 0 && !/\d/.test(b) && !hasPlaceholder(b) ? (left--, `${b} ${NUM_HINT}`) : b).join('\n') }));
+  return q;
+};
 
-  const after = atsScore(q, [], layout);
-  const todo = after.checks.filter(c => c.tip && c.got < c.max).map(c => c.tip);
-  const plain = q.experience.flatMap(e => bullets(e.summary)).filter(b => !/\d/.test(b)).slice(0, 3); // the bullets where a true number would help most
-  if (plain.length && after.checks.some(c => c.id === 'metrics' && c.got < c.max)) todo.push(`Edit these and add a number you can stand behind (users, pages, % faster, team size, hours saved): ${plain.map(b => `“${b.slice(0, 70)}”`).join('; ')}`);
-  return { profile: q, changes, todo, before, after: after.score };
+const bulletText = (p: Profile) => p.experience.flatMap(e => bullets(e.summary)).join('\n');
+const STEPS: { id: string; label: string; placeholder?: boolean; fn: (p: Profile) => Profile; show: (p: Profile) => string }[] = [
+  { id: 'contact', label: 'Contact details missing: placeholders added (replace them with the real ones)', placeholder: true, fn: contactHoles, show: p => `${p.email}\n${p.phone}\n${p.location}` },
+  { id: 'reword', label: 'Reword bullets: action verbs, no stray symbols or duplicates', fn: reword, show: bulletText },
+  { id: 'summary', label: 'Write a short summary from your title, experience and skills', fn: fillSummary, show: p => p.summary },
+  { id: 'skills', label: 'Add skills your resume text already mentions', fn: addSkills, show: p => flatSkills(p).join(', ') },
+  { id: 'roles', label: 'Roles without bullets: prompts added (write what you really did)', placeholder: true, fn: emptyRoles, show: bulletText },
+  { id: 'numbers', label: 'Add a number to 3 bullets: prompts added (use only true numbers)', placeholder: true, fn: numberHints, show: bulletText },
+];
+
+/** Proposed edits, none applied. Each one is computed on the resume as it is when accepted, so they can be taken in any order. */
+export function suggest(p: Profile): Change[] {
+  return STEPS.flatMap(s => { const after = s.show(s.fn(p)), before = s.show(p); return after === before ? [] : [{ id: s.id, label: s.label, before, after, placeholder: s.placeholder, apply: s.fn }]; });
 }
+
+/** Score of the resume with every change accepted, for "if you accept all". */
+export const scoreWith = (p: Profile, changes: Change[], jobs: Pick<Job, 'requiredSkills' | 'score'>[], layout?: { twoColumn: boolean; photo: boolean }) =>
+  atsScore(changes.reduce((q, c) => c.apply(q), p), jobs, layout).score;
+
