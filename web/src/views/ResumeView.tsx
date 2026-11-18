@@ -41,11 +41,12 @@ export default function ResumeView() {
   const [p, setP] = useState<Profile | null>(null);
   const [tpl, setTplState] = useState(() => { try { return templateById(localStorage.getItem('ja.template')).id; } catch { return TEMPLATE_DEFS[0].id; } });
   const def = templateById(tpl);
+  const [hist, setHist] = useState<Profile[]>([]); // earlier versions of the resume, newest last, for Undo
   const [review, setReview] = useState<{ changes: Change[]; tpl: boolean; allScore: number } | null>(null);
   const [cat, setCat] = useState(def.category);
   // Reload the editable copy only when the SAVED profile really changed (new upload, save). Other reloads, such as adding a photo, must not discard unsaved edits.
   const saved = useRef('');
-  useEffect(() => { if (!st?.profile) return; const j = JSON.stringify(st.profile); if (j !== saved.current) { saved.current = j; setP(st.profile); } }, [st?.profile]);
+  useEffect(() => { if (!st?.profile) return; const j = JSON.stringify(st.profile); if (j !== saved.current) { saved.current = j; setP(st.profile); setHist([]); } }, [st?.profile]);
   const ats = useMemo(() => (p ? atsScore(p, st?.jobs ?? [], atsLayout(def)) : null), [p, st?.jobs, def]);
   if (!st) return null;
   if (!p || !ats || !st.prefs) return <div className="view mx-auto max-w-2xl space-y-5 py-8 text-center"><h2 className="text-2xl font-extrabold">Check your resume's ATS score</h2>
@@ -60,10 +61,12 @@ export default function ResumeView() {
     const useT = atsSafe(def) ? def : suggested, changes = suggest(p);
     setReview({ changes, tpl: useT.id !== def.id, allScore: scoreWith(p, changes, st.jobs, atsLayout(useT)) });
   };
-  const accept = (c: Change) => { const n = c.apply(p); setP(n); setReview(r => r && { ...r, changes: r.changes.filter(x => x.id !== c.id), allScore: scoreWith(n, r.changes.filter(x => x.id !== c.id), st.jobs, atsLayout(r.tpl ? suggested : def)) }); };
-  const acceptAll = () => { if (!review) return; setP(review.changes.reduce((q, c) => c.apply(q), p)); if (review.tpl) { setTpl(suggested.id); setCat(suggested.category); } setReview(null); setMsg('All suggested edits applied. Replace any [placeholder] with your real details, then Save changes.'); };
+  const accept = (c: Change) => { const n = c.apply(p); set(n); setReview(r => r && { ...r, changes: r.changes.filter(x => x.id !== c.id), allScore: scoreWith(n, r.changes.filter(x => x.id !== c.id), st.jobs, atsLayout(r.tpl ? suggested : def)) }); };
+  const acceptAll = () => { if (!review) return; set(review.changes.reduce((q, c) => c.apply(q), p)); if (review.tpl) { setTpl(suggested.id); setCat(suggested.category); } setReview(null); setMsg('All suggested edits applied. Replace any [placeholder] with your real details, then Save changes.'); };
   const original = () => { setTpl(TEMPLATE_DEFS[0].id); setCat(TEMPLATE_DEFS[0].category); setMsg('Back to the original layout.'); };
-  const up = (patch: Partial<Profile>) => setP({ ...p, ...patch });
+  const set = (n: Profile) => { setHist(h => [...h.slice(-30), p]); setP(n); };
+  const undo = () => { const last = hist.at(-1); if (!last) return; setP(last); setHist(h => h.slice(0, -1)); setReview(null); };
+  const up = (patch: Partial<Profile>) => set({ ...p, ...patch });
   const setSkills = (list: string[]) => { // keep each skill in its category; new ones go to "other"
     const want = new Map(list.map(s => [s.toLowerCase(), s]));
     const skills = Object.fromEntries(Object.entries(p.skills).map(([k, v]) => [k, v.filter(s => want.delete(s.toLowerCase()))])) as Profile['skills'];
@@ -159,7 +162,7 @@ export default function ResumeView() {
       {holes > 0 && <Badge tone="warn">{holes} [placeholder]{holes === 1 ? '' : 's'} left: replace before you download</Badge>}
     </aside>
 
-    <div className="min-w-0"><p className="no-print mb-2 text-sm text-mute">Click any text on the page to edit it. Bullets: one per line.</p>
+    <div className="min-w-0"><p className="no-print mb-2 flex flex-wrap items-center gap-3 text-sm text-mute">Click any text on the page to edit it. Bullets: one per line.{hist.length > 0 && <Button variant="outline" className="h-8" onClick={undo}>Undo last change</Button>}</p>
       <article className="resume-page" aria-label="Resume" {...paperProps(def)}>
         <header className={cn('r-head', def.photo && 'has-photo')}>{def.photo && (st.photo ? <img className="r-photo" src={st.photo} alt="Profile photo" /> : <label htmlFor="photo" className="r-photo no-print">Add photo</label>)}
           <div className="r-ht"><E tag="h1" value={p.name} onChange={v => up({ name: v })} placeholder="Your name" />

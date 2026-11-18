@@ -280,6 +280,8 @@ await test('analyse proposes highlighted edits, applies them only on Accept, and
   await page.getByRole('button', { name: 'Accept all edits' }).click();
   const after = await art.innerText(); assert.match(after, /Managed building pages in React/); assert.match(after, /\[Add phone number\]/); assert.match(after, /\[add a number/);
   await page.waitForSelector('text=placeholder'); // the badge reminding to replace them
+  const had = await art.innerText(); await art.getByRole('button', { name: 'Remove role' }).first().click(); assert.notEqual(await art.innerText(), had);
+  await page.getByRole('button', { name: 'Undo last change' }).click(); assert.equal(await art.innerText(), had, 'Undo brings the removed role back');
 });
 
 
