@@ -45,5 +45,7 @@ export function improve(p: Profile, layout?: { twoColumn: boolean; photo: boolea
 
   const after = atsScore(q, [], layout);
   const todo = after.checks.filter(c => c.tip && c.got < c.max).map(c => c.tip);
+  const plain = q.experience.flatMap(e => bullets(e.summary)).filter(b => !/\d/.test(b)).slice(0, 3); // the bullets where a true number would help most
+  if (plain.length && after.checks.some(c => c.id === 'metrics' && c.got < c.max)) todo.push(`Edit these and add a number you can stand behind (users, pages, % faster, team size, hours saved): ${plain.map(b => `“${b.slice(0, 70)}”`).join('; ')}`);
   return { profile: q, changes, todo, before, after: after.score };
 }
