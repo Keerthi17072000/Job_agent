@@ -53,6 +53,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!st.lastSearch || Date.now() - +new Date(st.lastSearch) > 24 * 3600e3) void runScan();
   }, [st, runScan]);
 
+  // Listings sent with the extension's "Send to Job Agent" button wait in the extension: pull them whenever this tab is opened or focused.
+  useEffect(() => {
+    if (!ext || !st?.profile) return;
+    const pull = async () => { try { const r = await api.importExtension(); if (r.received) { setMsg(`Imported ${r.received} listings from the extension: ${r.added} added, ${r.duplicate} duplicates.`); await load(); } } catch { /* nothing waiting or no extension */ } };
+    void pull(); addEventListener('focus', pull); return () => removeEventListener('focus', pull);
+  }, [ext, !!st?.profile, load]);
+
   const describe = (r: { name: string; found: number; added: number; blocked?: string; error?: string }) =>
     r.blocked ? `${r.name} asked for a login or verification. Its tab is open: finish that yourself, then search again.` : r.error ? `${r.name}: ${r.error}` : `${r.name}: ${r.found} listings read, ${r.added} new.`;
   const portalSearch = async (id: string) => {
