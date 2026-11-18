@@ -19,7 +19,8 @@ export default function CompanyView() {
     setPRes([]);
     try {
       const asked = name.trim(), boards = await api.lookupCompany(asked); setRes({ asked, boards });
-      if (!boards.length && ext) { setBusy(false); for (const p of PORTALS.filter(p => ['naukri', 'indeed', 'linkedin'].includes(p.id))) await viaPortal(p.id, p.name, asked); // the rest on request: each one opens a tab } // no public board: read the portals for the user right away
+      // no public board: read the main portals now, the rest on request (each one opens a tab)
+      if (!boards.length && ext) { setBusy(false); for (const p of PORTALS.filter(p => ['naukri', 'indeed', 'linkedin'].includes(p.id))) await viaPortal(p.id, p.name, asked); }
     } catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
   };
   const viaPortal = async (id: string, label: string, company = res?.asked || name.trim()) => {
