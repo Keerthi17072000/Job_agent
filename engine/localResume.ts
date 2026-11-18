@@ -60,9 +60,11 @@ function toMonths(d: string, now: Date, isEnd = false): number | null {
 }
 
 // ---------- text preparation ----------
-const clean = (l: string) => l.replace(/^[\s•●▪■◦·*\-–—>]+/, '').replace(/\s+/g, ' ').trim();
+// Bullet signs: ordinary ones, arrows and dingbats, and the private-use characters that symbol-font bullets turn into when a PDF is read ("≡" is how one of them shows up).
+const BULLET = '•●▪■◦·*\\-–—>≡➢➤➔→✓✔‣⁃▶►◆◇○□\\u2022-\\u2043\\u25a0-\\u25ff\\u2190-\\u21ff\\u2700-\\u27bf\\ue000-\\uf8ff\\u0000-\\u0008';
+const clean = (l: string) => l.replace(new RegExp(`^[\\s${BULLET}]+`), '').replace(/\s+/g, ' ').trim();
 const has = (text: string, term: string) => new RegExp(`(^|[^a-z0-9+#.])${term.replace(/[.+*?^${}()|[\]\\/]/g, '\\$&')}($|[^a-z0-9+#])`, 'i').test(text);
-const isBullet = (raw: string) => /^\s*[•●▪■◦·*\-–—>]/.test(raw);
+const isBullet = (raw: string) => new RegExp(`^\\s*[${BULLET}]`).test(raw);
 /** "Kumbakonam,India" -> "Kumbakonam, India", "St.Annes.Matriculation" -> "St. Annes. Matriculation", "BE.Computer" -> "BE. Computer". */
 const tidy = (s: string) => s.replace(/,(?=\S)/g, ', ').replace(/(?<=[A-Za-z]{2})\.(?=[A-Z][a-z])/g, '. ').replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim();
 const headTitle = (s: string) => title(s).replace(/(?<=\s)(Of|And|Or|In|The|For|To|A)\b/g, m => m.toLowerCase());
@@ -156,6 +158,8 @@ const CAT: Record<string, string[]> = {
 };
 
 // ---------- experience ----------
+/** Two words share a stem when they have 4 letters in common in a row ("sdurai" and "duraisamy" share "durai"). */
+const sharesStem = (a: string, b: string) => { for (let i = 0; i + 4 <= a.length; i++) if (b.includes(a.slice(i, i + 4))) return true; return false; };
 const LOCATION = new RegExp(`\\b(${CITIES.join('|')}|india|usa|uk|remote|maharashtra|karnataka|tamil nadu|tamilnadu|telangana|kerala|delhi)\\b`, 'i');
 const PARTS = /\s+[|–—@]\s+|\s+-\s+|,\s*|\s+at\s+|\s*\|\s*/;
 const ORG_WORD = /solutions|services|technolog|systems|software|consult|limited|ltd|pvt|\binc\b|corp|bank|hospital|india|group|labs?\b|industries|enterprises|traders|associates|llp|llc|university|college|institute|school|company|motors|infotech|networks|pharma/i;
@@ -175,7 +179,7 @@ function parseExperience(lines: string[]): Experience[] {
   const dateAt = L.map((x, i) => (anchor(x) ? i : -1)).filter(i => i >= 0);
   const headers = dateAt.map((i, n) => { // nearest non-bullet short lines above the dates line, after the previous entry's dates line
     const floor = n ? dateAt[n - 1] : -1, above: { l: string; at: number }[] = [];
-    for (let j = i - 1; j > floor && above.length < 2; j--) { if (isBullet(L[j].raw) || L[j].l.length > 80 || anchor(L[j]) || ACTION.test(L[j].l)) break; above.unshift({ l: L[j].l, at: j }); } // a line starting with an action verb is a bullet whose bullet sign the file lost
+    for (let j = i - 1; j > floor && above.length < 2; j--) { if (isBullet(L[j].raw) || L[j].l.length > 80 || anchor(L[j]) || ACTION.test(L[j].l) || /^[A-Za-z &/]{3,30}:\s*\S/.test(L[j].l)) break; above.unshift({ l: L[j].l, at: j }); } // a line starting with an action verb is a bullet whose bullet sign the file lost
     return above;
   });
   return dateAt.map((i, n) => {
@@ -211,9 +215,9 @@ const seniority = (years: number, role: string) =>
 const EDU_CI = /bachelor|master|diploma|ph\.?d|high school|secondary|b\.?\s?tech|m\.?\s?tech|b\.?\s?sc|m\.?\s?sc|b\.?\s?com|m\.?\s?com|\bmca\b|\bbca\b|\bmba\b|\bbba\b|\bllb\b|\bmbbs\b|\bssc\b|\bhsc\b|\bhslc\b|\bsslc\b|\bcbse\b|\bicse\b|matriculation|intermediate|\b(10|12)(th)?\b|\bx{1,2}i{0,2} ?(std|standard)\b|\bpolytechnic\b|chartered accountan\w*|company secretary|cost (?:and |& )?management accountan\w*/i;
 const EDU_CS = /\b(B\.E|B\.A|M\.A|M\.S|B\.S|BE|BA|MA|MS|BS|BDes|MDes|B\.Des|M\.Des|BArch|MArch|B\.Arch|M\.Arch|BPharm|MPharm|B\.Pharm|M\.Pharm|BEd|MEd|B\.Ed|M\.Ed|BFA|MFA|BSW|MSW|BHM|BDS|BAMS|BHMS|BPT|LLM|MPhil|PGDM|PGDCA|DCA|ITI|CA)\b/; // upper-case only: "be" and "ms office" are not degrees
 const EDU = { test: (l: string) => EDU_CI.test(l) || EDU_CS.test(l) };
-const INSTITUTION = /university|college|institute|school|academy|polytechnic|vidyalaya|vidyalayam|campus/i;
+const INSTITUTION = /universit|college|institut|school|academy|polytechnic|vidyalaya|vidyalayam|campus|universidad|università|universität|université|hochschule|escuela|[ée]cole|politecnico|universidade|gymnasium/i;
 const GRADE = /\b(?:cgpa|gpa|percentage|percent|marks|grade|score)\b[\w/ .]{0,20}?[:\-]?\s*\d+(?:\.\d+)?\s*(?:\/\s*\d+(?:\.\d+)?|%)?|\b\d+(?:\.\d+)?\s*(?:cgpa|gpa|%)/i;
-const YEARISH = /\(?\s*((?:19|20)\d\d)(?:\s*(?:-|–|—|to)\s*((?:19|20)\d\d|present|current|ongoing))?\s*\)?/gi;
+const YEARISH = new RegExp(`\\(?\\s*(?:(?:${MONTHS})[a-z]*\\.?,?\\s*)?((?:19|20)\\d\\d)(?:\\s*(?:-|–|—|to)\\s*(?:(?:${MONTHS})[a-z]*\\.?,?\\s*)?((?:19|20)\\d\\d|present|current|ongoing))?\\s*\\)?`, 'gi');
 
 const SUBJECT = /^(mechanical|electrical|electronics|civil|computer|information|science|sciences|engineering|commerce|arts|mathematics|maths|physics|chemistry|biology|botany|zoology|management|nursing|accountancy|accounting|economics|english|history|business|administration|applications|technology|design|architecture|pharmacy|law|education|finance|marketing|statistics|biotechnology|microbiology|interaction|graphic|fashion|hotel|automobile|aeronautical|instrumentation|telecommunication|data|artificial|intelligence)$/i;
 /** "B.E Mechanical PSG College of Technology" (table cells joined by spaces) into the degree and the institution. */
@@ -232,7 +236,7 @@ function parseEducation(lines: string[]): Profile['education'] {
   let cur: Profile['education'][0] & { has: { inst: boolean; deg: boolean } } = { degree: '', institution: '', year: '', grade: '', has: { inst: false, deg: false } };
   const flush = () => { if (cur.has.inst || cur.has.deg) out.push({ degree: tidy(cur.degree), institution: tidy(cur.institution), year: cur.year, grade: cur.grade }); cur = { degree: '', institution: '', year: '', grade: '', has: { inst: false, deg: false } }; };
   for (const raw of lines) {
-    let l = clean(raw); if (!l) continue;
+    let l = clean(raw); if (!l || /^(?:degree|qualification|course|examination)\b.*\b(?:institution|university|college|school|board)\b/i.test(l) && !/\d{4}/.test(l)) continue; // table header row
     const grade = GRADE.exec(l)?.[0].trim() ?? ''; if (grade) l = l.replace(GRADE, ' ');
     const years = [...l.matchAll(YEARISH)], year = years.length ? (years.at(-1)![2] && /\d/.test(years.at(-1)![2]) ? years.at(-1)![2] : years.at(-1)![1]) : '';
     const segs = l.replace(YEARISH, ' ').split(/\s*[|–—]\s*|\s+-\s+|,\s*/).map(s => s.replace(/[()]/g, '').trim()).filter(Boolean).flatMap(splitCombined);
@@ -270,8 +274,9 @@ function parseProjects(lines: string[]): Profile['projects'] {
     const looksTitle = !isBullet(raw) && l.length <= 90 && !/[.:]$/.test(l);
     if (!cur || (looksTitle && (cur.description || cur.tech.length))) {
       const dash = /^(.{3,80}?)\s+[–—-]\s+(.+)$/.exec(l), colon = /^(.{3,60}?):\s+(.+)$/.exec(l), mm = dash ?? colon;
-      const p = { name: tidy((mm ? mm[1] : l).replace(/\s*[|–—-]\s*(?:19|20)\d\d.*$/, '')), description: '', tech: [] as string[] };
-      if (mm) p.description = mm[2].trim(); out.push(p);
+      const piece = l.split(/\s+\|\s+/); // "Damro | Navabrind IT Solutions Pvt Ltd | March 2024 - Present": the name, then who it was for and when
+      const p = { name: tidy((piece.length > 1 ? piece[0] : mm ? mm[1] : l).replace(/\s*[|–—-]\s*(?:19|20)\d\d.*$/, '')), description: '', tech: [] as string[] };
+      if (piece.length > 1) p.description = piece.slice(1).join(' | '); else if (mm) p.description = mm[2].trim(); out.push(p);
     } else add(cur, l);
   }
   for (const p of out) {
@@ -332,7 +337,7 @@ export function parseLocal(text: string, now = new Date()): Profile {
     .map(u => (/^https?:/.test(u) ? u : `https://${u.replace(/^www\./, '')}`)))].slice(0, 4);
 
   // name: a "Name:" label wins; otherwise the best short capitalised line near the top that is not a heading, title, place or contact detail
-  const labelled = /^\s*(?:full\s+)?name\s*[:\-–]\s*([A-Za-z][A-Za-z.' ]{1,40}?)\s*$/im.exec(lines.join('\n'))?.[1]?.trim();
+  const labelled = (/^\s*(?:full\s+)?name\s*[:\-–]\s*([A-Za-z][A-Za-z.' ]{1,40}?)\s*$/im.exec(lines.join('\n')) ?? /^\s*(?:full\s+)?name\s+([A-Z][A-Za-z.']+(?:\s+[A-Z][A-Za-z.']+){1,3})\s*$/m.exec(lines.slice(0, 12).join('\n')))?.[1]?.trim();
   const NOT_NAME = /resume|curriculum|vitae|\bcv\b|bio-?data|objective|summary|profile|experience|education|skills?|declaration|personal|details|contact|career|carrier|address|e-?mail|mobile|phone|linkedin|github|portfolio|www|http|@|\d|india\b/i;
   // colleges, companies, degrees and street addresses are capitalised short lines too, and are the usual wrong guesses
   const ORG = /universit|college|institut|school|academy|polytechnic|vidyalaya|engineering|technolog|science|arts\b|commerce|management|studies|department|faculty|campus|solutions|services|systems|software|consult|enterprises?|industries|group|labs?\b|pvt|ltd|limited|\binc\b|llp|corp|company|bank|hospital|bachelor|master|diploma|degree|b\.?\s?tech|m\.?\s?tech|\bb\.?e\b|\bmba\b|nagar|street|road|colony|district|taluk|post\b|state\b|pin\s?code/i;
@@ -342,12 +347,13 @@ export function parseLocal(text: string, now = new Date()): Profile {
     const piece = clean(despace(raw)).split(/\s*[|•·,/]\s*|\s{3,}|\s+-\s+/)[0].trim(), tok = piece.split(/\s+/);
     if (tok.length > 4 || piece.length < 3 || piece.length > 40 || !tok.every(t => /^[A-Z][A-Za-z.'-]*$/.test(t)) || NOT_NAME.test(piece) || ORG.test(piece) || EDU.test(piece) || TITLE_WORDS.test(piece) || headingOf(piece) || CITIES.includes(piece.toLowerCase())) return;
     const parts = tok.map(t => t.toLowerCase().replace(/[^a-z]/g, '')).filter(t => t.length >= 3);
-    const inEmail = local.length >= 3 && parts.some(t => local.includes(t) || t.includes(local)); // "keerthivasan17@" vouches for "Keerthi Vasan S"
+    const inEmail = local.length >= 3 && parts.some(t => local.includes(t) || t.includes(local) || sharesStem(local, t)); // "keerthivasan17@" vouches for "Keerthi Vasan S"; "sdurai246@" for "DURAISAMY"
     if (i >= 15 && !inEmail) return; // far from the top, only the email address can vouch for a line
-    const score = (inEmail ? 6 : 0) + (i <= 2 ? 2 : i <= 6 ? 1 : 0) + (tok.length >= 2 ? 2 : 0);
+    const lone = tok.length === 1 && i <= 1 && piece.length >= 4 && /^[A-Z][A-Za-z.'-]+$/.test(piece); // a single capitalised word as the very first line is the name
+    const score = (inEmail ? 6 : 0) + (i <= 2 ? 2 : i <= 6 ? 1 : 0) + (tok.length >= 2 ? 2 : 0) + (lone ? 1 : 0);
     if (score >= 3 && score > best) { best = score; name = piece; } // a single word needs the email or the very top of the page to vouch for it
   });
-  name = name.replace(/\s+/g, ' ');
+  name = name.replace(/\s+/g, ' ').replace(/^(?:full\s+)?name\s+(?=[A-Z])/i, '');
 
   // contact lines that sit under a summary heading (name, email, phone, address) are not part of the summary
   const notContact = (l: string) => l !== name && clean(despace(l)) !== name && !/@|https?:|www\.|linkedin|github/i.test(l) && l.replace(/\D/g, '').length < 8 && !/^(e-?mail|mobile|phone|contact|address|location|dob|date of birth)\b/i.test(l) && !(l.length <= 40 && !/[.!]$/.test(l) && LOCATION.test(l) && l.split(/\s+/).length <= 4);
@@ -391,10 +397,25 @@ export function parseLocal(text: string, now = new Date()): Profile {
   const industries = Object.entries(INDUSTRIES).map(([k, re]) => [k, (text.match(new RegExp(re.source, 'gi')) ?? []).length] as const).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k);
 
   const lower = head.toLowerCase();
-  const city = CITIES.find(c => new RegExp(`\\b${c}\\b`).test(lower)) ?? CITIES.find(c => new RegExp(`\\b${c}\\b`).test(text.toLowerCase()));
-  const labelledLoc = /(?:location|address|city|current location)\s*[:\-]\s*([A-Za-z][A-Za-z .]{2,30})/i.exec(head)?.[1]?.split(/[,|]/)[0]?.trim();
+  const top = lines.slice(0, 15).join('\n').toLowerCase(); // a town named only further down is usually a company's, not the candidate's
+  const city = CITIES.find(c => new RegExp(`\\b${c}\\b`).test(lower)) ?? CITIES.find(c => new RegExp(`\\b${c}\\b`).test(top));
+  const labelledLoc = (() => { // "Address: Sector 21, Gurgaon, Haryana" -> the city, not the street
+    const raw = /(?:location|address|city|current location)\s*[:\-]\s*([^\n]{3,120})/i.exec(head)?.[1]; if (!raw) return undefined;
+    const segs = raw.split(/[,|]/).map(x => x.replace(/[\d\-–]+/g, '').trim()).filter(x => /^[A-Za-z][A-Za-z .]{2,30}$/.test(x));
+    return segs.find(x => CITIES.includes(x.toLowerCase())) ?? segs.find(x => !/\b(sector|road|street|st|nagar|colony|block|flat|no|plot|door|main|cross|layout|apartments?)\b/i.test(x)) ?? segs[0];
+  })();
   const headerLoc = lines.slice(0, 8).map(l => /^(?:.*[|•]\s*)?([A-Z][a-z]+(?: [A-Z][a-z]+)?),\s*(?:[A-Z][a-z]+(?: [A-Z][a-z]+)?|[A-Z]{2})(?:,\s*[A-Za-z ]+)?\s*(?:[|•].*)?$/.exec(clean(l))?.[1]).find(c => c && !TITLE_WORDS.test(c) && !/@/.test(c));
-  const cityCase = city ? city.replace(/\b\w/g, m => m.toUpperCase()) : labelledLoc ?? headerLoc ?? '';
+  // a short place-like piece of the contact block ("... | email | link | Penandam", or on the line right under it)
+  const firstHeading = lines.findIndex((l, i) => i > 0 && !isBullet(l) && headingOf(clean(l)));
+  let blockLoc = '';
+  for (const raw of lines.slice(0, firstHeading > 0 ? Math.min(firstHeading, 8) : 8)) {
+    for (const seg of raw.split(/\s*[|•·]\s*/).map(x => clean(x).replace(/[,;:]+$/, ''))) {
+      if (blockLoc || !seg || /^(?:full\s+)?name\b/i.test(seg) || seg.length > 35 || seg.split(' ').length > 4 || /@|https?:|www\.|linkedin|github|\d{3,}/i.test(seg) || seg === name || clean(despace(seg)) === name || TITLE_WORDS.test(seg) || headingOf(seg) || NOT_NAME.test(seg) && !CITIES.includes(seg.toLowerCase())) continue;
+      if (/^[A-Za-z][A-Za-z .'-]*(,\s*[A-Za-z .'-]+)?$/.test(seg) && /^[A-Z]/.test(seg) && !ORG.test(seg)) blockLoc = seg.split(',')[0].trim();
+    }
+  }
+  const blockPlace = name && blockLoc !== name ? blockLoc : '';
+  const cityCase = labelledLoc ?? (blockPlace || (city ? city.replace(/\b\w/g, m => m.toUpperCase()) : headerLoc ?? ''));
 
   // ---- sections kept as written: interests and languages from the skills section, then Extra-curricular, Hobbies and so on
   const extras: { heading: string; text: string }[] = [];

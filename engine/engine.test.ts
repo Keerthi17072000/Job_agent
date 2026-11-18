@@ -389,3 +389,22 @@ test('company lookup returns only boards that exist and have openings, and repor
     assert.deepEqual(await findCompanyBoards('Nonexistent Co'), []);
   } finally { globalThis.fetch = real; }
 });
+
+test('europass "Name" label, street addresses and a contact block resolve to the right name and city', () => {
+  const e = parseLocal(FX.europass), c = parseLocal(FX.contactBlock);
+  assert.equal(e.name, 'Maria Gonzalez');
+  assert.equal(e.location, 'Madrid');
+  assert.equal(c.name, 'PRIYANKA SHARMA');
+  assert.equal(c.location, 'Gurgaon');
+  assert.equal(c.experience.length, 2);
+});
+
+test('private-use / control bullet glyphs never leak into the text or create fake projects', () => {
+  const t = 'ARUN KUMAR\nWeb Developer | arun.k@example.com | +91 90000 11122 | Penandam\nEXPERIENCE\nWeb Developer\nAcme Software Pvt Ltd\nJan 2022 - Present\n\u0001 Built dashboards in React\n Reduced load time by 40%\nPROJECTS\nShop | Acme Software Pvt Ltd | March 2023\n≡ Online store with React and Node\nEDUCATION\nB.E Computer Science, Test College of Engineering, 2021\n';
+  const p = parseLocal(t);
+  assert.equal(p.name, 'ARUN KUMAR');
+  assert.equal(p.location, 'Penandam');
+  assert.ok(!/[≡\u0001]/.test(JSON.stringify(p)));
+  assert.equal(p.projects.length, 1);
+  assert.equal(p.projects[0].name, 'Shop');
+});
