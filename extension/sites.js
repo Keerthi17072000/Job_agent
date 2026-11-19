@@ -69,7 +69,7 @@
     const more = boxes.filter(x => !best.includes(x) && x.b.tagName === tag && JOB_TITLE.test(x.h.textContent) && leaves(x.b).some(t => t !== x.h.textContent.replace(/\s+/g, ' ').trim() && isPlace(t)));
     const slug = v => v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     return [...best, ...more].map(({ h, b }) => {
-      const title = h.textContent.replace(/\s+/g, ' ').trim(), rest = [...new Set(leaves(b))].filter(t => t !== title && !NOISE.test(t)), location = rest.find(isPlace) || '';
+      const title = h.textContent.replace(/\s+/g, ' ').replace(/[:+\s]+$/, ''), rest = [...new Set(leaves(b))].filter(t => t !== h.textContent.replace(/\s+/g, ' ').trim() && !NOISE.test(t)), location = rest.find(isPlace) || '';
       const a = [...b.querySelectorAll('a[href]')].map(x => abs(x.getAttribute('href'), base)).find(u => /^https:/.test(u) && key(u) !== key(page) && site.jobUrl.test(u));
       return { source: site.source, title, url: a || `${page}?job=${encodeURIComponent(slug(title + ' ' + location))}`, company: '',
         location, skills: [], description: rest.filter(t => t.length > 40).sort((x, y) => y.length - x.length)[0] || '' };
@@ -79,7 +79,7 @@
     const ok = e => !e.closest('header,nav,footer,aside'), txt = e => e.textContent.replace(/\s+/g, ' ').trim();
     const flat = e => ![...e.children].some(c => !INLINE.test(c.tagName));
     // by title words: any small element whose text reads like a job title, whatever tag or class the site uses
-    const titles = [...doc.querySelectorAll('body *')].filter(e => ok(e) && flat(e) && txt(e).length > 5 && txt(e).length <= 120 && txt(e).split(' ').length <= 14 && !/[.:!?]$/.test(txt(e)) && JOB_TITLE.test(txt(e)));
+    const titles = [...doc.querySelectorAll('body *')].filter(e => ok(e) && flat(e) && txt(e).length > 5 && txt(e).length <= 120 && txt(e).split(' ').length <= 14 && !/[.!?]$/.test(txt(e)) && JOB_TITLE.test(txt(e)));
     const deepest = titles.filter(e => !titles.some(o => o !== e && e.contains(o)));
     const byTitle = groupCards(doc, site, base, deepest);
     if (byTitle.length) return byTitle;

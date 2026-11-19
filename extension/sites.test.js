@@ -80,3 +80,13 @@ test('careers list whose cards differ in class still yields every card; same tit
   assert.equal(siteFor('www.unknown-corp.example', '/en/home'), null);
   globalThis.JobAgentForce = true; assert.ok(siteFor('www.unknown-corp.example', '/en/home')); globalThis.JobAgentForce = false;
 });
+
+test('accordion careers list: titles ending in a colon are kept (colon removed), with no place and collapsed bodies', () => {
+  const item = (t, body) => `<div class="acc"><div class="head"><span>${t}</span><b>+</b></div><div class="body" style="display:none"><p>${body}</p></div></div>`;
+  const { doc, loc } = run('https://www.navabrind.example/careers/', `<div class="list">${[['Odoo Developer', 'Experience: 1.5 to 6 years. Odoo core modules, Python, XML and JavaScript.'], ['Freelancing Sr. Business Development Executive:', 'Remote freelance role for lead generation and client calls.'],
+    ['Fresher Python/Odoo Developer:', 'Freshers with Python knowledge can apply to this opening.'], ['SEO Analyst', 'Five to seven years of SEO experience required.'], ['ERP/Odoo Functional Consultant:', 'Gather requirements and configure Odoo modules for clients.'],
+    ['ERP/Odoo Business Analyst', 'Translate business needs into functional specifications.'], ['Business Development and Sales Manager -IT/ERP', 'Own the sales pipeline for IT and ERP services.']].map(([t, b]) => item(t, b)).join('')}</div>`);
+  const { jobs } = extract(doc, loc);
+  assert.equal(jobs.length, 7); assert.ok(jobs.some(j => j.title === 'Fresher Python/Odoo Developer') && jobs.some(j => j.title === 'Freelancing Sr. Business Development Executive'));
+  assert.ok(jobs.every(j => j.description.length > 20));
+});
