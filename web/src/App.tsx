@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AppProvider, useApp, useRoute } from './state.tsx';
-import { cn } from './ui.tsx';
+import { ConfirmHost, cn } from './ui.tsx';
 import { ICONS, Icon, ResumeInput } from './views/common.tsx';
 import Overview from './views/Overview.tsx';
 import JobsView from './views/JobsView.tsx';
@@ -34,6 +34,7 @@ function Shell() {
 
   return <div className="min-h-screen">
     <ResumeInput />
+    <ConfirmHost />
     <div className="progress-bar" style={{ width: scan.running ? `${Math.max(6, (scan.done / scan.total) * 100)}%` : '100%', opacity: scan.running ? 1 : 0 }} aria-hidden />
     <nav aria-label="Main" className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-full bg-rail p-1.5 shadow-2xl md:inset-x-auto md:bottom-auto md:left-4 md:top-1/2 md:-translate-y-1/2 md:flex-col md:gap-1.5 md:p-2">
       <a href="#/overview" aria-label="Job Agent home" className="hidden size-11 place-items-center rounded-full bg-lime text-lime-ink md:grid"><Icon d={ICONS.search} /></a>

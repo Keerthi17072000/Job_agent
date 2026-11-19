@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Avatar, Badge, Button, Card, LinkButton, ScoreRing, Select, cn } from '../ui.tsx';
+import { Avatar, Badge, Button, Card, LinkButton, ScoreRing, Select, cn, confirmDialog } from '../ui.tsx';
 import { STATUSES, type Job } from '../api.ts';
 import { useApp } from '../state.tsx';
 
@@ -28,7 +28,7 @@ export function ResumeInput() {
 export function DeleteResume({ className }: { className?: string }) {
   const { deleteResume, busy } = useApp();
   return <button type="button" disabled={busy} className={cn('inline-flex h-10 items-center rounded-full border border-bad/50 px-5 text-sm font-semibold text-bad transition-colors hover:bg-bad/10', className)}
-    onClick={() => { if (confirm('Delete your uploaded resume and the profile read from it? Jobs you saved or tracked stay, without a match score.')) void deleteResume(); }}>Delete resume</button>;
+    onClick={async () => { if (await confirmDialog('Delete your uploaded resume and the profile read from it? Jobs you saved or tracked stay, without a match score.', 'Delete resume', 'Delete your resume?')) void deleteResume(); }}>Delete resume</button>;
 }
 export const ReplaceResume = ({ className }: { className?: string }) => <label htmlFor="resume" className={cn('inline-flex h-10 cursor-pointer items-center rounded-full border border-line bg-card px-5 text-sm font-semibold transition-colors hover:border-brand hover:bg-sunk focus-within:outline-2', className)}>Upload another resume</label>;
 
@@ -66,7 +66,7 @@ export function JobCard({ job, compact }: { job: Job; compact?: boolean }) {
         <LinkButton href={job.url}>Apply</LinkButton>
         <Button variant={job.saved ? 'lime' : 'outline'} onClick={() => updateJob(job.id, { saved: !job.saved })} aria-pressed={!!job.saved}>{job.saved ? 'Saved' : 'Save'}</Button>
         <Select className="w-40" aria-label="Status" value={job.status} onChange={e => updateJob(job.id, { status: e.target.value as Job['status'] })}>{(st?.prefs ? STATUSES : STATUSES).map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</Select>
-        <Button variant="ghost" className="h-9 text-bad" aria-label={`Remove ${job.title}`} onClick={() => { if (!job.saved && job.status === 'new' || confirm('This job is saved or tracked. Remove it anyway?')) void removeJob(job.id); }}>Remove</Button>
+        <Button variant="ghost" className="h-9 text-bad" aria-label={`Remove ${job.title}`} onClick={async () => { if (!job.saved && job.status === 'new' || await confirmDialog('This job is saved or tracked. Remove it anyway?', 'Remove job', 'Remove this job?')) void removeJob(job.id); }}>Remove</Button>
       </div>
     </div>
   </Card>;

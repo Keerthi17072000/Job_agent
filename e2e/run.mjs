@@ -97,12 +97,13 @@ await test('no resume: search by title lists unscored jobs; uploading ranks them
   const first = await page.locator('a.font-extrabold').first().innerText(), n0 = await page.locator('a.font-extrabold').count();
   await page.getByRole('button', { name: /^Remove / }).first().click(); await toast(page).filter({ hasText: 'Job removed' }).waitFor();
   assert.equal(await page.locator('a.font-extrabold').count(), n0 - 1, 'one job removed');
-  page.once('dialog', d => d.accept()); await page.getByRole('button', { name: 'Clear results' }).click();
+  await page.getByRole('button', { name: 'Clear results' }).click(); await page.getByRole('alertdialog').getByRole('button', { name: 'Clear results' }).click();
   await page.waitForSelector('text=No jobs yet'); // nothing was saved or tracked, so everything is cleared
   await page.goto(BASE + '#/overview'); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
   await page.goto(BASE + '#/jobs'); await page.getByLabel('Minimum match').waitFor(); // with a resume: scored, as before
-  page.once('dialog', d => d.accept());
   await page.goto(BASE + '#/profile'); await page.getByRole('button', { name: 'Delete resume' }).click();
+  assert.equal(await page.getByRole('alertdialog').count(), 1, 'a styled dialog, not the browser one'); await page.keyboard.press('Escape'); assert.equal(await page.getByRole('alertdialog').count(), 0, 'Escape cancels'); assert.equal(await page.locator('text=No profile yet').count(), 0);
+  await page.getByRole('button', { name: 'Delete resume' }).click(); await page.getByRole('alertdialog').getByRole('button', { name: 'Delete resume' }).click();
   await toast(page).filter({ hasText: 'Resume deleted' }).waitFor();
   await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Search jobs without a resume');
   await page.goto(BASE + '#/profile'); await page.waitForSelector('text=No profile yet');

@@ -52,3 +52,22 @@ export function ScoreRing({ score, size = 56 }: { score: number; size?: number }
 /** Company initial in a pastel tile, like the logo tiles in the reference. */
 const TILES = ['bg-brand-soft text-brand-ink', 'bg-lime text-lime-ink', 'bg-warn-soft text-warn', 'bg-good-soft text-good', 'bg-bad-soft text-bad'];
 export const Avatar = ({ name }: { name: string }) => <span className={cn('grid size-10 shrink-0 place-items-center rounded-xl text-sm font-extrabold', TILES[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % TILES.length])}>{(name.trim()[0] ?? '?').toUpperCase()}</span>;
+
+// A confirm dialog in the app's own style instead of the browser's. `confirmDialog(...)` resolves true on Confirm, false on Cancel, Escape or a click outside.
+type Ask = { title: string; message: string; confirmLabel: string; res: (ok: boolean) => void };
+let show: ((a: Ask) => void) | null = null;
+export const confirmDialog = (message: string, confirmLabel = 'Confirm', title = 'Are you sure?') =>
+  new Promise<boolean>(res => show ? show({ title, message, confirmLabel, res }) : res(window.confirm(message)));
+export function ConfirmHost() {
+  const [a, setA] = useState<Ask | null>(null), back = useRef<HTMLElement | null>(null), cancel = useRef<HTMLButtonElement>(null);
+  useEffect(() => { show = x => { back.current = document.activeElement as HTMLElement; setA(x); }; return () => { show = null; }; }, []);
+  useEffect(() => { if (a) cancel.current?.focus(); }, [a]);
+  if (!a) return null;
+  const done = (ok: boolean) => { a.res(ok); setA(null); back.current?.focus?.(); };
+  return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/50 p-4 backdrop-blur-sm" onMouseDown={e => { if (e.target === e.currentTarget) done(false); }}
+    onKeyDown={e => { if (e.key === 'Escape') done(false); if (e.key === 'Tab') { e.preventDefault(); (document.activeElement === cancel.current ? document.getElementById('confirm-ok') : cancel.current)?.focus(); } }}>
+    <div role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-msg" className="rise w-full max-w-md space-y-4 rounded-3xl border border-line bg-card p-6 shadow-2xl">
+      <h2 id="confirm-title" className="text-lg font-extrabold">{a.title}</h2><p id="confirm-msg" className="text-sm text-mute">{a.message}</p>
+      <div className="flex justify-end gap-2"><button ref={cancel} type="button" className={buttonClass('outline')} onClick={() => done(false)}>Cancel</button>
+        <button id="confirm-ok" type="button" className="inline-flex h-10 items-center rounded-full bg-bad px-5 text-sm font-semibold text-white transition-transform hover:scale-[1.03]" onClick={() => done(true)}>{a.confirmLabel}</button></div></div></div>;
+}

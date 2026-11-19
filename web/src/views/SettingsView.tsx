@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Prefs } from '../api.ts';
-import { Badge, Button, Card, Input, Label, Select } from '../ui.tsx';
+import { Badge, Button, Card, Input, Label, Select, confirmDialog } from '../ui.tsx';
 import { useApp } from '../state.tsx';
 import { boardsFor } from '../boards.ts';
 
@@ -33,12 +33,11 @@ export default function SettingsView({ dark, toggleTheme }: { dark: boolean; tog
         <Card className="space-y-3"><h3 className="font-extrabold">Profiles on this browser</h3><p className="text-xs text-mute">Each profile keeps its own resume, matches, saved jobs and applications, fully separate from the others. Nothing is shared or uploaded.</p>
           <ul className="space-y-2">{st.slots.map(s => <li key={s.id} className="flex items-center justify-between gap-2 rounded-2xl bg-sunk px-3 py-2 text-sm"><span className="font-semibold">{s.name}{s.id === st.slot.id && <Badge tone="lime" className="ml-2">active</Badge>}</span>
             <span className="flex gap-2">{s.id !== st.slot.id && <Button variant="outline" className="h-8" onClick={() => slotAction(() => api.switchSlot(s.id))}>Switch</Button>}
-              <Button variant="ghost" className="h-8 text-bad" onClick={() => { if (confirm_(s.name)) void slotAction(() => api.deleteSlot(s.id)); }}>Delete</Button></span></li>)}</ul>
+              <Button variant="ghost" className="h-8 text-bad" onClick={async () => { if (await confirm_(s.name)) void slotAction(() => api.deleteSlot(s.id)); }}>Delete</Button></span></li>)}</ul>
           <form className="flex gap-2" onSubmit={e => { e.preventDefault(); void slotAction(() => api.newSlot(name)).then(() => setName('')); }}><Input aria-label="New profile name" placeholder="New profile name" value={name} onChange={e => setName(e.target.value)} /><Button type="submit" disabled={busy}>Add</Button></form></Card>
         <Card className="space-y-3"><h3 className="font-extrabold">Data</h3><Button variant="outline" onClick={() => slotAction(async () => { await api.clearJobs(); await load(); })}>Clear jobs, cache and history for this profile</Button></Card>
       </div>
     </div>
   </div>;
 }
-// window.confirm is a plain browser dialog; keep it behind one name so a nicer dialog can replace it later
-const confirm_ = (name: string) => window.confirm(`Delete "${name}" and all its data from this browser?`);
+const confirm_ = (name: string) => confirmDialog(`Delete "${name}" and all its data from this browser?`, 'Delete profile', 'Delete this profile?');
