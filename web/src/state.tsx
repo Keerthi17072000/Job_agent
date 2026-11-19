@@ -9,6 +9,7 @@ export interface Ctx {
   updateJob: (id: string, patch: Partial<Pick<Job, 'status' | 'saved' | 'notes'>>) => Promise<void>;
   savePrefs: (p: Prefs) => Promise<void>; saveProfile: (p: Profile, prefs: Prefs) => Promise<void>;
   slotAction: (f: () => Promise<unknown>) => Promise<void>;
+  quickSearch: (role: string, location: string, region: string) => Promise<void>; deleteResume: () => Promise<void>;
 }
 const C = createContext<Ctx | null>(null);
 export const useApp = () => { const c = useContext(C); if (!c) throw new Error('outside provider'); return c; };
@@ -55,10 +56,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Listings sent with the extension's "Send to Job Agent" button wait in the extension: pull them whenever this tab is opened or focused.
   useEffect(() => {
-    if (!ext || !st?.profile) return;
+    if (!ext) return;
     const pull = async () => { try { const r = await api.importExtension(); if (r.received) { setMsg(`Imported ${r.received} listings from the extension: ${r.added} added, ${r.duplicate} duplicates.`); await load(); } } catch { /* nothing waiting or no extension */ } };
     void pull(); addEventListener('focus', pull); return () => removeEventListener('focus', pull);
-  }, [ext, !!st?.profile, load]);
+  }, [ext, load]);
 
   const describe = (r: { name: string; found: number; added: number; blocked?: string; error?: string }) =>
     r.blocked ? `${r.name} asked for a login or verification. Its tab is open: finish that yourself, then search again.` : r.error ? `${r.name}: ${r.error}` : `${r.name}: ${r.found} listings read, ${r.added} new.`;
@@ -94,6 +95,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateJob: async (id, patch) => { await api.updateJob(id, patch); await load(); },
     savePrefs: p => guard('Saving…', async () => { await api.savePrefs(p); return 'Preferences saved and matches updated.'; }),
     saveProfile: (p, prefs) => guard('Saving profile…', async () => { await api.saveProfile(p); await api.savePrefs(prefs); return 'Profile confirmed. All matches were recalculated.'; }),
+    quickSearch: async (role, location, region) => { await api.quickQuery(role.trim(), location.trim(), region); await load(); await runScan(true); },
+    deleteResume: () => guard('Deleting the resume…', async () => { await api.deleteResume(); return 'Resume deleted. You can search without a resume or upload another one.'; }),
     slotAction: f => guard('Working…', async () => { await f(); }),
   };
   return <C.Provider value={ctx}>{children}</C.Provider>;

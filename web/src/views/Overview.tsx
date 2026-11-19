@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Avatar, Badge, Button, Card, Input, LinkButton, Select, useCountUp, cn } from '../ui.tsx';
 import { useApp } from '../state.tsx';
 import { REGIONS } from '../boards.ts';
-import { Icon, ICONS, ReplaceResume, STATUS_LABEL, UploadCard, day } from './common.tsx';
+import { Icon, ICONS, JobCard, ReplaceResume, STATUS_LABEL, UploadCard, day } from './common.tsx';
+import QuickSearch from './QuickSearch.tsx';
 import type { Job } from '../api.ts';
 
 function Tile({ label, value, tone }: { label: string; value: number; tone?: string }) {
@@ -18,6 +19,8 @@ export default function Overview() {
     <h2 className="text-3xl font-extrabold md:text-4xl">Upload your resume, get matched to real jobs</h2>
     <p className="text-mute">Any profession. The app reads your resume on this device, builds a profile you can correct, searches company career pages and job boards, and ranks every job against you.</p>
     <UploadCard big />
+    <div className="text-left"><QuickSearch /></div>
+    {st.jobs.length > 0 && <div className="space-y-3 text-left"><h3 className="text-lg font-extrabold">Jobs found ({st.jobs.length}) <a href="#/jobs" className="text-sm font-semibold text-brand-ink hover:underline">See all</a></h3><div className="grid gap-3">{st.jobs.slice(0, 8).map(j => <JobCard key={j.id} job={j} />)}</div></div>}
     <ol className="grid gap-3 text-left sm:grid-cols-3">{[['Upload', 'PDF, DOCX or TXT'], ['Confirm', 'Review and fix your profile'], ['Match', 'Ranked jobs with reasons']].map(([t, d], i) =>
       <li key={t} className="rounded-2xl bg-card p-4"><span className="mb-2 grid size-7 place-items-center rounded-full bg-lime text-sm font-extrabold text-lime-ink">{i + 1}</span><b>{t}</b><p className="text-sm text-mute">{d}</p></li>)}</ol></div>;
 

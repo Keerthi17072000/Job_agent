@@ -86,6 +86,23 @@ await test('upload, edit profile, search with a failing source, dedupe, save, tr
   await page.locator('a.font-extrabold', { hasText: 'Frontend Engineer' }).first().click(); await page.waitForSelector('text=did not provide a description');
 });
 
+await test('no resume: search by title lists unscored jobs; uploading ranks them; deleting the resume goes back to unscored search', async page => {
+  await home(page);
+  await page.waitForSelector('text=Search jobs without a resume');
+  await page.getByLabel('Job title or keyword').fill('Frontend Developer'); await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await toast(page).filter({ hasText: 'Search complete' }).waitFor({ timeout: 60000 });
+  await page.goto(BASE + '#/jobs'); await page.locator('a.font-extrabold', { hasText: 'Frontend Developer' }).first().waitFor();
+  assert.equal(await page.getByLabel('Minimum match').count(), 0, 'no match filter without a resume');
+  assert.doesNotMatch(await page.locator('main').innerText(), /Excellent|Strong|Moderate|Weak/, 'no invented match labels');
+  await page.goto(BASE + '#/overview'); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
+  await page.goto(BASE + '#/jobs'); await page.getByLabel('Minimum match').waitFor(); // with a resume: scored, as before
+  page.once('dialog', d => d.accept());
+  await page.goto(BASE + '#/profile'); await page.getByRole('button', { name: 'Delete resume' }).click();
+  await toast(page).filter({ hasText: 'Resume deleted' }).waitFor();
+  await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Search jobs without a resume');
+  await page.goto(BASE + '#/profile'); await page.waitForSelector('text=No profile yet');
+});
+
 await test('different profession: a nurse resume produces nurse queries, no developer terms', async page => {
   await home(page); await uploadAndSearch(page, file('priya.txt', RESUME_NURSE), 'Priya');
   const q = await page.locator('text=Searching for:').locator('..').innerText();
@@ -154,7 +171,7 @@ await test('two profiles on one browser are isolated; switching restores each', 
   await page.goto(BASE + '#/settings'); await page.waitForSelector('text=Profiles on this browser');
   await page.fill('input[aria-label="New profile name"]', 'Second person'); await page.click('button:has-text("Add")'); await page.waitForSelector('text=Second person');
   await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Upload your resume, get matched'); // fresh slot: no resume, no jobs
-  await page.goto(BASE + '#/jobs'); await page.waitForSelector('text=Upload your resume first');
+  await page.goto(BASE + '#/jobs'); await page.waitForSelector('text=Search jobs without a resume');
   await page.goto(BASE + '#/settings'); await page.locator('li', { hasText: 'Asha Rao' }).locator('button:has-text("Switch")').click();
   await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Hello, Asha');
 });

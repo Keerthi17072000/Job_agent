@@ -6,7 +6,7 @@ import { CATEGORIES, TEMPLATE_DEFS, atsLayout, atsSafe, paperProps, templateById
 import { api } from '../api.ts';
 import { Badge, Button, Card, ScoreRing, cn } from '../ui.tsx';
 import { useApp } from '../state.tsx';
-import { ReplaceResume, UploadCard, lines } from './common.tsx';
+import { DeleteResume, ReplaceResume, UploadCard, lines } from './common.tsx';
 import type { Profile } from '../api.ts';
 
 /** A piece of the resume you edit in place. Plain text only; the value is saved when you leave the field. */
@@ -157,7 +157,7 @@ export default function ResumeView() {
         <Button variant="lime" className="w-full" disabled={busy || !dirty} onClick={() => saveProfile(p, st.prefs!)}>{dirty ? 'Save changes' : 'All changes saved'}</Button>
         <div className="grid grid-cols-2 gap-2"><Button onClick={() => window.print()}>Save as PDF</Button><Button variant="outline" onClick={word}>Download Word</Button></div>
         <p className="text-xs text-mute">“Save as PDF” opens your browser's print window: choose <b>Save as PDF</b> as the destination. Then open <b>More settings</b> and untick <b>Headers and footers</b> (that removes the date, page title and web address your browser prints on every page), and tick <b>Background graphics</b> so template colours show. Saving changes also updates your job matches.</p>
-        <ReplaceResume className="w-full justify-center" /><p className="text-xs text-mute">Upload a resume (including one you downloaded here) to analyse it again.</p></Card>
+        <ReplaceResume className="w-full justify-center" /><DeleteResume className="w-full justify-center" /><p className="text-xs text-mute">Upload a resume (including one you downloaded here) to analyse it again.</p></Card>
       {dirty && <Badge tone="warn">Unsaved edits</Badge>}
       {holes > 0 && <Badge tone="warn">{holes} [placeholder]{holes === 1 ? '' : 's'} left: replace before you download</Badge>}
     </aside>

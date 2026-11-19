@@ -29,7 +29,7 @@ export default function JobDetail({ id }: { id: string }) {
       <a href="#/jobs" className="text-sm font-semibold text-brand-ink hover:underline">← All jobs</a>
       <Card className="space-y-4">
         <div className="flex flex-wrap items-start gap-4"><Avatar name={job.company} />
-          <div className="min-w-0 flex-1"><h2 className="text-xl font-extrabold leading-snug md:text-2xl">{job.title}</h2><p className="text-mute">{job.company} · {job.location || 'Location not stated'}</p></div><ScoreRing score={job.score} size={64} /></div>
+          <div className="min-w-0 flex-1"><h2 className="text-xl font-extrabold leading-snug md:text-2xl">{job.title}</h2><p className="text-mute">{job.company} · {job.location || 'Location not stated'}</p></div>{st.profile && <ScoreRing score={job.score} size={64} />}</div>
         <div className="flex flex-wrap gap-1.5">{job.workMode && <Badge tone={job.workMode === 'remote' ? 'lime' : 'brand'}>{job.workMode}</Badge>}<Badge>{job.expLevel}</Badge>{job.salary && <Badge tone="warn">{job.salary}</Badge>}{job.postedAt && <Badge>posted {day(job.postedAt)}</Badge>}{job.deadline && <Badge tone="bad">deadline {day(job.deadline)}</Badge>}<Badge tone="good">{job.category}</Badge></div>
         <div className="flex flex-wrap items-center gap-2"><LinkButton href={job.url} variant="primary">Apply on the original site</LinkButton>
           <Button variant={job.saved ? 'lime' : 'outline'} onClick={() => updateJob(job.id, { saved: !job.saved })}>{job.saved ? 'Saved' : 'Save job'}</Button>
@@ -39,6 +39,7 @@ export default function JobDetail({ id }: { id: string }) {
       <Card><h3 className="mb-2 font-extrabold">Full job description</h3>{job.description ? <p className="whitespace-pre-line text-sm leading-relaxed">{job.description}</p> : <p className="text-sm text-mute">This source did not provide a description. Open the original posting for details.</p>}</Card>
     </div>
     <aside className="min-w-0 space-y-5">
+      {!st.profile ? <Card className="space-y-2"><h3 className="font-extrabold">Match with your resume</h3><p className="text-sm text-mute">This job is not scored because no resume is uploaded. Upload one to see the match, the missing skills and why.</p><Button onClick={() => { location.hash = '#/overview'; }}>Upload resume</Button>{!!job.requiredSkills.length && <><p className="text-xs font-semibold text-mute">Skills the posting asks for</p><div className="flex flex-wrap gap-1.5">{job.requiredSkills.map(k => <Badge key={k}>{k}</Badge>)}</div></>}</Card> : <>
       <Card className="space-y-3"><h3 className="font-extrabold">Resume suitability</h3><p className="text-sm">{verdict}</p>
         <ul className="space-y-2.5">{PARTS.map(([k, label, w]) => <li key={k} className="text-sm"><div className="flex justify-between"><span>{label} <span className="text-xs text-mute">weight {w}</span></span><span className="tabular-nums">{Math.round(job.breakdown[k] * 100)}%</span></div>
           <div className="mt-1 h-2 rounded-full bg-sunk"><div className="bar-grow-x h-full rounded-full bg-gradient-to-r from-brand to-lime" style={{ width: `${job.breakdown[k] * 100}%` }} /></div></li>)}</ul>
@@ -48,6 +49,7 @@ export default function JobDetail({ id }: { id: string }) {
           <div key={t as string}><p className="mb-1 text-xs font-semibold text-mute">{t as string}</p><div className="flex flex-wrap gap-1.5">{(items as string[]).map(s => <Badge key={s} tone={tone as 'good'}>{s}</Badge>)}</div></div>)}
         {!job.requiredSkills.length && <p className="text-sm text-mute">The posting names no recognisable skills.</p>}
         <p className="text-xs text-mute">“Not found” only means the resume does not mention it. It does not prove you lack the skill.</p></Card>
+</>}
       <Card className="space-y-2"><h3 className="font-extrabold">Where this job was seen</h3><ul className="space-y-1.5 text-sm">{job.sources.map(s => <li key={s.url}><a href={s.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-semibold text-brand-ink hover:underline"><Icon d={ICONS.sources} className="size-4" />{s.source}</a></li>)}</ul></Card>
       <Card className="space-y-2"><h3 className="font-extrabold">Notes</h3><textarea aria-label="Notes" className="min-h-24 w-full rounded-2xl border border-line bg-card p-3 text-sm focus:border-brand" value={notes} onChange={e => setNotes(e.target.value)} onBlur={() => notes !== (job.notes ?? '') && updateJob(job.id, { notes })} placeholder="Contacts, follow-ups, interview dates…" />{job.appliedAt && <p className="text-xs text-mute">Applied on {day(job.appliedAt)}</p>}</Card>
     </aside>

@@ -21,6 +21,7 @@ let current = 'default';
 export const slotId = () => current;
 export const get = <T,>(k: string) => kvGet<T>(`${current}:${k}`);
 export const set = (k: string, v: unknown) => kvSet(`${current}:${k}`, v);
+export const del = (k: string) => kvDel(`${current}:${k}`);
 
 export async function slots(): Promise<Slot[]> { return (await kvGet<Slot[]>('slots')) ?? [{ id: 'default', name: 'My profile' }]; }
 export async function useSlot(id: string) { current = id; await kvSet('current', id); }

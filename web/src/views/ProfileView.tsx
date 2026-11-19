@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Badge, Button, Card, Input, Label, Select } from '../ui.tsx';
 import { useApp } from '../state.tsx';
-import { EmptyCard, ReplaceResume, lines } from './common.tsx';
+import { DeleteResume, EmptyCard, ReplaceResume, lines } from './common.tsx';
 import type { Prefs, Profile } from '../api.ts';
 import { REGIONS } from '../boards.ts';
 
@@ -26,7 +26,7 @@ export default function ProfileView() {
 
   return <div className="view space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-extrabold">Review your profile</h2><p className="text-sm text-mute">Extracted from your resume. Fix anything wrong, then confirm: every match is recalculated from this profile.</p></div>
-      <div className="flex flex-wrap gap-2"><ReplaceResume /><Button variant="lime" disabled={busy || !dirty} onClick={() => saveProfile(p, prefs)}>{dirty ? 'Confirm and update matches' : 'Profile confirmed'}</Button></div></div>
+      <div className="flex flex-wrap gap-2"><ReplaceResume /><DeleteResume /><Button variant="lime" disabled={busy || !dirty} onClick={() => saveProfile(p, prefs)}>{dirty ? 'Confirm and update matches' : 'Profile confirmed'}</Button></div></div>
     <div className="grid gap-5 xl:grid-cols-2">
       <Card className="space-y-3"><h3 className="font-extrabold">About you</h3>
         <div className="grid gap-3 sm:grid-cols-2"><Label>Name<Input value={p.name} onChange={e => up({ name: e.target.value })} /></Label><Label>Email<Input value={p.email} onChange={e => up({ email: e.target.value })} /></Label>

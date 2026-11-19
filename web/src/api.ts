@@ -42,12 +42,20 @@ async function need() {
   if (!profile || !prefs) throw new Error('Upload a resume first');
   return { profile, prefs };
 }
+/** Without a resume there is nothing to score against: an empty profile lets the same code run, and the results are marked "Not scored". */
+const GUEST = normalizeProfile({} as Profile);
+async function needOrGuest() {
+  const [profile, prefs] = await Promise.all([readProfile(), readPrefs()]);
+  return { profile: profile ?? GUEST, prefs: prefs ?? { ...DEFAULT_PREFS, minScore: 0 }, guest: !profile };
+}
+const unscored = (j: Job): Job => Object.assign(j, { score: 0, category: 'Not scored', reasons: [], matchedSkills: [], missingSkills: [], missingOptional: [], breakdown: { skills: 0, experience: 0, responsibilities: 0, title: 0, education: 0 } });
 const jobsOf = readJobs;
 const rawOf = (j: Job): RawJob => ({ source: j.source, sourceKind: j.sourceKind, title: j.title, company: j.company, location: j.location, url: j.url, description: j.description, workMode: j.workMode || undefined, salary: j.salary, postedAt: j.postedAt, deadline: j.deadline, externalId: j.externalId, exp: j.expMin == null ? '' : `${j.expMin}${j.expMax != null ? '-' + j.expMax : '+'} years` });
 
 /** Recompute every stored job against the current profile and preferences, keeping the user's own data on each job. */
 async function rescore() {
-  const { profile, prefs } = await need();
+  const { profile, prefs, guest } = await needOrGuest();
+  if (guest) { await store.set('jobs', (await jobsOf()).map(unscored)); return; }
   const out: Job[] = [];
   for (const j of await jobsOf()) {
     const n = toJob(rawOf(j), profile, prefs, j.semantic);
@@ -118,13 +126,26 @@ export const api = {
     return note;
   },
 
+  /** No resume: remember what to search for. Jobs found are listed without a match score. */
+  quickQuery: async (role: string, location: string, region: string) => {
+    const old = await readPrefs();
+    await store.set('prefs', { ...DEFAULT_PREFS, ...old, roles: [role], locations: location ? [location] : [], region, minScore: 0, includeRemote: !region, companies: old?.companies?.length ? old.companies : boardsFor(region) } satisfies Prefs);
+  },
+  /** Remove the uploaded resume and everything derived from it. Jobs you saved or tracked stay, without a score. */
+  deleteResume: async () => {
+    const old = await readPrefs();
+    await Promise.all([store.del('profile'), store.del('resumeText'), store.del('photo'), store.set('runs', []), store.set('cache', {}), store.set('lastSearch', ''),
+      store.set('prefs', { ...DEFAULT_PREFS, ...old, roles: [], locations: [], minScore: 0 }),
+      store.set('jobs', (await readJobs()).filter(j => j.saved || j.status !== 'new').map(unscored))]);
+  },
   saveProfile: async (p: Profile) => { await store.set('profile', normalizeProfile(p)); await rescore(); },
   savePrefs: async (p: Prefs) => { await store.set('prefs', p); await rescore(); },
   suggestQueries: async () => { const { profile, prefs } = await need(); if (!prefs.aiKey || !prefs.aiProvider) return buildQueries(profile, prefs); return [...new Set([...(await makeAi(prefs.aiProvider, prefs.aiKey).suggestQueries(profile)), ...buildQueries(profile, prefs)])].slice(0, 8); },
 
   /** Search every source in the background: bounded concurrency, per-source status as each finishes, cancellable, cached for 6 hours. */
   search: async (o: { fresh?: boolean; signal?: AbortSignal; onSource?: (r: Run) => void; onPhase?: (s: string) => void } = {}) => {
-    const { profile, prefs } = await need();
+    const { profile, prefs, guest } = await needOrGuest();
+    if (!prefs.roles.length) throw new Error('Enter a job title to search for.');
     const queries = buildQueries(profile, prefs);
     const query: Query = { region: prefs.region, roles: prefs.roles, queries, locations: prefs.locations, companies: prefs.companies, adzuna: prefs.adzuna };
     const sig = JSON.stringify([queries, prefs.locations, prefs.companies, !!prefs.adzuna?.id, prefs.region]);
@@ -143,7 +164,7 @@ export const api = {
 
     // optional on-device semantic similarity for the responsibilities score; any failure falls back to word overlap
     let sim: Map<string, number> | undefined;
-    if (prefs.semantic && raws.length) {
+    if (!guest && prefs.semantic && raws.length) {
       try {
         o.onPhase?.('Loading the on-device model (first time downloads ~25 MB)…');
         const [rv] = await embed([resumeCorpus(profile).slice(0, 2000)]);
@@ -159,6 +180,7 @@ export const api = {
     o.onPhase?.('Scoring and removing duplicates…');
     const jobs = await jobsOf();
     const counts = ingest(raws, profile, prefs, jobs, r => sim?.get(r.url));
+    if (guest) jobs.forEach(unscored);
     if (sim) for (const j of jobs) if (sim.has(j.url) && j.semantic == null) j.semantic = sim.get(j.url);
     const perSource = results.map(r => ({ ...r }));
     await Promise.all([store.set('jobs', jobs), store.set('runs', [...((await store.get<Run[]>('runs')) ?? []).filter(r => !SOURCES.some(x => x.id === r.adapter)), ...perSource]), store.set('cache', cache), store.set('lastSearch', new Date().toISOString()),
@@ -173,9 +195,9 @@ export const api = {
       if (e.source !== window || e.data?.type !== 'jobagent-jobs') return;
       clearTimeout(timer); removeEventListener('message', onMsg);
       try {
-        const { profile, prefs } = await need();
+        const { profile, prefs, guest } = await needOrGuest();
         const raws = (e.data.jobs as RawJob[]).map(j => ({ ...j, source: portalName(j.source), sourceKind: 'portal' as const, description: j.description ?? '' }));
-        const jobs = await jobsOf(); const counts = ingest(raws, profile, prefs, jobs);
+        const jobs = await jobsOf(); const counts = ingest(raws, profile, prefs, jobs); if (guest) jobs.forEach(unscored);
         await store.set('jobs', jobs); resolve({ received: raws.length, ...counts });
       } catch (err) { reject(err); }
     };
@@ -192,12 +214,12 @@ export const api = {
    */
   portalSearch: async (portalId: string): Promise<PortalResult> => {
     const portal = PORTALS.find(p => p.id === portalId); if (!portal) throw new Error('Unknown portal');
-    const { profile, prefs } = await need();
+    const { profile, prefs, guest } = await needOrGuest();
     const role = buildQueries(profile, prefs)[0] ?? prefs.roles[0];
     if (!role) throw new Error('Add a target role first.');
     const r = await extRequest<{ jobs?: RawJob[]; blocked?: string; error?: string }>('jobagent-search', { url: portal.searchUrl(role, prefs.locations[0] ?? '') }, 90000);
     const raws = (r.jobs ?? []).map(j => ({ ...j, source: portalName(j.source), sourceKind: 'portal' as const, description: j.description ?? '' }));
-    const jobs = await jobsOf(); const counts = ingest(raws, profile, prefs, jobs); await store.set('jobs', jobs);
+    const jobs = await jobsOf(); const counts = ingest(raws, profile, prefs, jobs); if (guest) jobs.forEach(unscored); await store.set('jobs', jobs);
     const run: Run = { adapter: portal.id, name: portal.name, status: r.blocked ? 'blocked' : r.error ? 'error' : 'ok', reason: r.blocked ?? r.error ?? `Read ${raws.length} listings through your browser.`, found: raws.length, checked_at: new Date().toISOString(), added: counts.added, duplicate: counts.duplicate };
     await store.set('runs', [...((await store.get<Run[]>('runs')) ?? []).filter(x => x.adapter !== portal.id), run]);
     return { portal: portal.id, name: portal.name, found: raws.length, added: counts.added, duplicate: counts.duplicate, blocked: r.blocked, error: r.error };
@@ -206,11 +228,11 @@ export const api = {
   /** Openings of one company on a restricted portal, read through the extension (user clicked). Only listings naming the company are kept; scored, not stored. */
   companyPortalSearch: async (portalId: string, company: string): Promise<{ jobs: Job[]; others: number; blocked?: string; error?: string }> => {
     const portal = PORTALS.find(p => p.id === portalId); if (!portal) throw new Error('Unknown portal');
-    const { profile, prefs } = await need();
+    const { profile, prefs, guest } = await needOrGuest();
     const r = await extRequest<{ jobs?: RawJob[]; blocked?: string; error?: string }>('jobagent-search', { url: portal.searchUrl(company, '') }, 90000);
     const key = company.toLowerCase().replace(/[^a-z0-9]/g, ''), raws = (r.jobs ?? []).map(j => ({ ...j, source: portalName(j.source), sourceKind: 'portal' as const, description: j.description ?? '' }));
     const mine = raws.filter(j => j.company.toLowerCase().replace(/[^a-z0-9]/g, '').includes(key));
-    const jobs = mine.map(raw => toJob(raw, profile, prefs)).filter((j): j is Job => typeof j === 'object').sort((a, b) => b.score - a.score);
+    const jobs = mine.map(raw => toJob(raw, profile, prefs)).filter((j): j is Job => typeof j === 'object').map(j => guest ? unscored(j) : j).sort((a, b) => b.score - a.score);
     return { jobs, others: raws.length - mine.length, blocked: r.blocked, error: r.error };
   },
 
@@ -227,9 +249,9 @@ export const api = {
 
   /** Every opening of one company, found by trying its likely public job-board names. Scored against your resume but not stored until you save them. */
   lookupCompany: async (name: string) => {
-    const { profile, prefs } = await need();
+    const { profile, prefs, guest } = await needOrGuest();
     return (await findCompanyBoards(name)).map(f => ({ label: f.label, company: f.company,
-      jobs: f.jobs.map(raw => toJob(raw, profile, prefs)).filter((j): j is Job => typeof j === 'object').sort((a, b) => b.score - a.score) }));
+      jobs: f.jobs.map(raw => toJob(raw, profile, prefs)).filter((j): j is Job => typeof j === 'object').map(j => guest ? unscored(j) : j).sort((a, b) => b.score - a.score) }));
   },
   addCompany: async (c: Company) => { const { prefs } = await need(); if (!prefs.companies.some(x => x.ats === c.ats && x.token === c.token)) await store.set('prefs', { ...prefs, companies: [...prefs.companies, c] }); },
   saveJobs: async (found: Job[]) => { const jobs = await jobsOf(); let added = 0; for (const j of found) if (addJob(jobs, j) === 'added') added++; await store.set('jobs', jobs); return added; },

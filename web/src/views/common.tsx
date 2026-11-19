@@ -25,6 +25,11 @@ export function ResumeInput() {
   const { upload, busy } = useApp();
   return <input id="resume" type="file" accept=".pdf,.docx,.txt" disabled={busy} className="sr-only" aria-label="Resume file (PDF, DOCX or TXT)" onChange={e => { void upload(e.target.files?.[0]); e.target.value = ''; }} />;
 }
+export function DeleteResume({ className }: { className?: string }) {
+  const { deleteResume, busy } = useApp();
+  return <button type="button" disabled={busy} className={cn('inline-flex h-10 items-center rounded-full border border-bad/50 px-5 text-sm font-semibold text-bad transition-colors hover:bg-bad/10', className)}
+    onClick={() => { if (confirm('Delete your uploaded resume and the profile read from it? Jobs you saved or tracked stay, without a match score.')) void deleteResume(); }}>Delete resume</button>;
+}
 export const ReplaceResume = ({ className }: { className?: string }) => <label htmlFor="resume" className={cn('inline-flex h-10 cursor-pointer items-center rounded-full border border-line bg-card px-5 text-sm font-semibold transition-colors hover:border-brand hover:bg-sunk focus-within:outline-2', className)}>Upload another resume</label>;
 
 export function UploadCard({ big }: { big?: boolean }) {
@@ -44,12 +49,12 @@ export function JobCard({ job, compact }: { job: Job; compact?: boolean }) {
   const { st, updateJob } = useApp();
   const chip = (items: string[], tone: 'good' | 'bad' | 'mute') => items.slice(0, 6).map(s => <Badge key={s} tone={tone}>{s}</Badge>);
   return <Card className="lift rise flex gap-4">
-    <ScoreRing score={job.score} />
+    {st?.profile && <ScoreRing score={job.score} />}
     <div className="flex min-w-0 flex-1 flex-col gap-3">
       <div className="flex items-start gap-3"><Avatar name={job.company} />
         <div className="min-w-0 flex-1"><a href={`#/job/${job.id}`} className="block text-[15px] font-extrabold leading-snug hover:text-brand-ink">{job.title}</a>
           <p className="truncate text-sm text-mute">{job.company}</p></div>
-        <Badge tone={job.score >= 75 ? 'good' : job.score >= 60 ? 'brand' : 'mute'} className="shrink-0">{job.category}</Badge></div>
+        {st?.profile && <Badge tone={job.score >= 75 ? 'good' : job.score >= 60 ? 'brand' : 'mute'} className="shrink-0">{job.category}</Badge>}</div>
       <div className="flex flex-wrap gap-1.5 text-xs">
         {job.workMode && <Badge tone={job.workMode === 'remote' ? 'lime' : 'brand'}>{job.workMode}</Badge>}<Badge>{job.expLevel}</Badge>
         {job.salary && <Badge tone="warn">{job.salary}</Badge>}<Badge className="gap-1"><Icon d={ICONS.pin} className="size-3" />{job.location || 'Location not stated'}{job.regions.length === 1 && !job.location.includes(job.regions[0]) ? ` · ${job.regions[0]}` : ''}</Badge>

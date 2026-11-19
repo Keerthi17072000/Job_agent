@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button, Card, Input, Select } from '../ui.tsx';
 import { useApp } from '../state.tsx';
 import { EmptyCard, JobCard, STATUS_LABEL, lines } from './common.tsx';
+import QuickSearch from './QuickSearch.tsx';
 import type { Job } from '../api.ts';
 
 const SORTS: Record<string, (a: Job, b: Job) => number> = {
@@ -14,10 +15,10 @@ const SORTS: Record<string, (a: Job, b: Job) => number> = {
 
 export default function JobsView({ savedOnly }: { savedOnly?: boolean }) {
   const { st, scan } = useApp();
-  const [f, setF] = useState({ min: -1, region: '', role: '', company: '', location: '', exp: '', salary: false, mode: '', portal: '', posted: '', status: '', skills: '', fit: false, sort: 'match' });
+  const [f, setF] = useState({ min: -1, region: '', role: '', company: '', location: '', exp: '', salary: false, mode: '', portal: '', posted: '', status: '', skills: '', fit: false, sort: st?.profile ? 'match' : 'newest' });
   const set = (k: keyof typeof f, v: string | number | boolean) => setF(x => ({ ...x, [k]: v }));
   const jobs = st?.jobs ?? [];
-  const min = f.min >= 0 ? f.min : savedOnly ? 0 : st?.prefs?.minScore ?? 60; // saved jobs are shown whatever their score
+  const min = f.min >= 0 ? f.min : savedOnly || !st?.profile ? 0 : st?.prefs?.minScore ?? 60; // saved jobs are shown whatever their score
   const skills = lines(f.skills.toLowerCase());
   const pass = (j: Job, skipCompany = false) => {
     const age = j.postedAt ? (Date.now() - +new Date(j.postedAt)) / 864e5 : 0;
@@ -32,15 +33,16 @@ export default function JobsView({ savedOnly }: { savedOnly?: boolean }) {
   const regions = useMemo(() => { const m = new Map<string, number>(); for (const j of jobs) for (const r of j.regions) m.set(r, (m.get(r) ?? 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1]); }, [jobs]);
   const uniq = (g: (j: Job) => string) => [...new Set(jobs.map(g).filter(Boolean))].sort();
   if (!st) return null;
-  if (!st.profile) return <EmptyCard title="Upload your resume first" body="Matches appear here once your resume has been read." cta={{ href: '#/overview', label: 'Upload resume' }} />;
+  const noResume = !st.profile;
 
   return <div className="view space-y-4">
+    {noResume && !savedOnly && <QuickSearch />}
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-extrabold">{savedOnly ? 'Saved jobs' : 'All matches'} <span className="text-mute">({shown.length} of {savedOnly ? jobs.filter(j => j.saved).length : jobs.length})</span></h2>
-        <Select className="w-52" aria-label="Sort" value={f.sort} onChange={e => set('sort', e.target.value)}><option value="match">Sort: highest match</option><option value="newest">Sort: newest</option><option value="salary">Sort: highest salary</option><option value="relevant">Sort: most relevant</option><option value="experience">Sort: lowest experience</option></Select></div>
+        <Select className="w-52" aria-label="Sort" value={f.sort} onChange={e => set('sort', e.target.value)}>{!noResume && <option value="match">Sort: highest match</option>}<option value="newest">Sort: newest</option><option value="salary">Sort: highest salary</option><option value="relevant">Sort: most relevant</option><option value="experience">Sort: lowest experience</option></Select></div>
       <details open className="group"><summary className="cursor-pointer text-sm font-semibold text-mute">Filters</summary>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <Select aria-label="Minimum match" value={min} onChange={e => set('min', +e.target.value)}><option value={0}>Any score</option><option value={60}>60+ Moderate</option><option value={75}>75+ Strong</option><option value={90}>90+ Excellent</option></Select>
+          {!noResume && <Select aria-label="Minimum match" value={min} onChange={e => set('min', +e.target.value)}><option value={0}>Any score</option><option value={60}>60+ Moderate</option><option value={75}>75+ Strong</option><option value={90}>90+ Excellent</option></Select>}
           <Input aria-label="Job title" placeholder="Job title" value={f.role} onChange={e => set('role', e.target.value)} />
           <Select aria-label="Region" value={f.region} onChange={e => { set('region', e.target.value); set('company', ''); }}><option value="">All regions</option>{regions.map(([r, n]) => <option key={r} value={r}>{r} ({n})</option>)}</Select>
           <Select aria-label="Company" value={f.company} onChange={e => set('company', e.target.value)}><option value="">All companies ({companies.length})</option>{companies.map(([c, n]) => <option key={c} value={c}>{c} ({n})</option>)}</Select>
