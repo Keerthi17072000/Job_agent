@@ -48,23 +48,40 @@
     location: text(e, site.location), exp: text(e, site.exp), salary: text(e, site.salary), skills: site.skills ? [...e.querySelectorAll(site.skills)].map(l => l.textContent.trim()) : [], description: '',
   }));
 
-  // Cards that are not links (a click opens a panel): repeated blocks that each hold one heading. The page address plus ?job=<title> stands in for a link.
+  // Cards that are not links (a click opens a panel): repeated blocks that each hold one job title. The page address plus ?job=<title> stands in for a link.
+  // A block counts as a job only when its title reads like one (Engineer, Manager, Executive...) or it carries a place; slogans and value statements repeat too, and are skipped.
   const HEAD = 'h2,h3,h4,h5,[role="heading"],[class*="title"],[class*="Title"],[class*="job-name"]';
+  const JOB_TITLE = /\b(engineers?|developers?|managers?|executives?|consultants?|analysts?|designers?|specialists?|leads?|directors?|officers?|associates?|architects?|administrators?|coordinators?|representatives?|interns?|internships?|trainees?|scientists?|writers?|accountants?|recruiters?|support|sales|marketing|assistants?|heads?|presidents?|nurses?|teachers?|technicians?|testers?|qa|devops|programmers?|supervisors?|advisors?|agents?|trainers?|researchers?|strategists?|owners?)\b/i;
+  const PLACE = /^[A-Za-z][A-Za-z .,'/()&-]{1,58}$/, isPlace = t => PLACE.test(t) && (t === t.toUpperCase() || /,|remote|hybrid|india|thailand|usa|uk|singapore|dubai|germany|japan|canada/i.test(t));
   const sig = e => e.tagName + '.' + [...e.classList].slice(0, 2).join('.');
-  function structural(doc, site, base) {
-    const heads = [...doc.querySelectorAll(HEAD)].filter(h => !h.closest('header,nav,footer,aside') && h.textContent.trim().length > 3 && h.textContent.trim().length < 140 && !h.querySelector(HEAD));
-    const boxes = heads.map(h => { let b = h; while (b.parentElement && b.parentElement !== doc.body && ![...b.parentElement.querySelectorAll(HEAD)].some(o => o !== h && !h.contains(o) && !b.contains(o))) b = b.parentElement; return { h, b }; })
+  const INLINE = /^(SPAN|B|I|EM|STRONG|A|BR|SVG|SMALL|ABBR)$/i;
+  function groupCards(doc, site, base, heads) {
+    const boxes = heads.map(h => { let b = h; while (b.parentElement && b.parentElement !== doc.body && !heads.some(o => o !== h && b.parentElement.contains(o) && !b.contains(o))) b = b.parentElement; return { h, b }; })
       .filter(x => x.b !== x.h && x.b.textContent.length < 1500);
     const groups = new Map(); for (const x of boxes) { const k = sig(x.b); groups.set(k, [...(groups.get(k) || []), x]); }
-    const best = [...groups.values()].sort((a, b) => b.length - a.length)[0];
-    if (!best || best.length < 2) return [];
+    const info = ([...groups.values()]).filter(g => g.length >= 2).map(g => {
+      const place = g.filter(({ h, b }) => leaves(b).some(t => t !== h.textContent.replace(/\s+/g, ' ').trim() && isPlace(t))).length / g.length, title = g.filter(({ h }) => JOB_TITLE.test(h.textContent)).length / g.length;
+      return { g, ok: title >= 0.5 || place >= 0.5, score: g.length * (title + place) };
+    }).filter(x => x.ok).sort((a, b) => b.score - a.score);
+    if (!info.length) return [];
     const page = base.split(/[?#]/)[0];
-    return best.map(({ h, b }) => {
+    return info[0].g.map(({ h, b }) => {
       const title = h.textContent.replace(/\s+/g, ' ').trim(), rest = [...new Set(leaves(b))].filter(t => t !== title && !NOISE.test(t));
       const a = [...b.querySelectorAll('a[href]')].map(x => abs(x.getAttribute('href'), base)).find(u => /^https:/.test(u) && key(u) !== key(page) && site.jobUrl.test(u));
       return { source: site.source, title, url: a || `${page}?job=${encodeURIComponent(title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))}`, company: '',
-        location: rest.find(t => t.length < 60 && /^[A-Za-z .,'/()&-]+$/.test(t) && (t === t.toUpperCase() || /,|remote|hybrid|india|thailand|usa|uk/i.test(t))) || '', skills: [], description: rest.filter(t => t.length > 40).sort((x, y) => y.length - x.length)[0] || '' };
+        location: rest.find(isPlace) || '', skills: [], description: rest.filter(t => t.length > 40).sort((x, y) => y.length - x.length)[0] || '' };
     });
+  }
+  function structural(doc, site, base) {
+    const ok = e => !e.closest('header,nav,footer,aside'), txt = e => e.textContent.replace(/\s+/g, ' ').trim();
+    const flat = e => ![...e.children].some(c => !INLINE.test(c.tagName));
+    // by title words: any small element whose text reads like a job title, whatever tag or class the site uses
+    const titles = [...doc.querySelectorAll('body *')].filter(e => ok(e) && flat(e) && txt(e).length > 5 && txt(e).length <= 120 && txt(e).split(' ').length <= 14 && !/[.:!?]$/.test(txt(e)) && JOB_TITLE.test(txt(e)));
+    const deepest = titles.filter(e => !titles.some(o => o !== e && e.contains(o)));
+    const byTitle = groupCards(doc, site, base, deepest);
+    if (byTitle.length) return byTitle;
+    const heads = [...doc.querySelectorAll(HEAD)].filter(h => ok(h) && txt(h).length > 3 && txt(h).length < 140 && !h.querySelector(HEAD));
+    return groupCards(doc, site, base, heads);
   }
 
   const NAV = /^(careers?|jobs?|home|about( us)?|contact( us)?|login|log in|register|sign ?in|sign ?up|search|all jobs|view all.*|privacy.*|terms.*|apply|apply now)$/i;

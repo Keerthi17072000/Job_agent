@@ -58,3 +58,15 @@ test('careers page whose cards are not links: repeated heading blocks become job
   assert.equal(jobs[0].location, 'BANGKOK NOI, THAILAND'); assert.equal(jobs[1].company, 'Zoho'); assert.match(jobs[1].description, /voice-based support/);
   assert.equal(new Set(jobs.map(j => j.url)).size, 3); assert.ok(jobs.every(j => j.url.startsWith('https://www.zoho.com/careers/?job=')));
 });
+
+test('careers page: slogan blocks that repeat more often than the jobs are ignored; titles may be plain divs', () => {
+  const { doc, loc } = run('https://www.zoho.com/careers/', `<section class="values">${['Putting customers first', 'Redefining capital', 'The long-term approach', 'Personalized professionalism', 'Strength in variety'].map(v => `<div class="v"><h3>${v}</h3><p>We believe in doing the right thing for the people we work with every single day.</p></div>`).join('')}</section>
+    <div class="jobs"><div class="job"><div class="t">TH Implementation Lead - Enterprise Business Solutions (EBS)</div><div class="loc"><svg></svg><span>BANGKOK NOI, THAILAND</span></div><p>The Lead - Enterprise Business Solutions (EBS) will effectively cross-collaborate with multiple stakeholders.</p></div>
+    <div class="job"><div class="t">Technical Support Engineers</div><div class="loc"><svg></svg><span>INDIA</span></div><p>Provide voice-based support to international and domestic customers over the phone.</p></div>
+    <div class="job"><div class="t">Sales Executives</div><div class="loc"><svg></svg><span>INDIA</span></div><p>Build rapport with contacts and understand where the prospect is in the buying process.</p></div></div>`);
+  const { jobs } = extract(doc, loc);
+  assert.deepEqual(jobs.map(j => j.title), ['TH Implementation Lead - Enterprise Business Solutions (EBS)', 'Technical Support Engineers', 'Sales Executives']);
+  assert.equal(jobs[0].location, 'BANGKOK NOI, THAILAND'); assert.ok(!jobs.some(j => /customers first|Redefining/.test(j.title)));
+  const none = run('https://www.example.com/careers/', `<div class="v"><h3>Putting customers first</h3><p>We believe in doing the right thing for people.</p></div><div class="v"><h3>Redefining capital</h3><p>We believe in doing the right thing for people.</p></div>`);
+  assert.equal(extract(none.doc, none.loc).jobs.length, 0);
+});
