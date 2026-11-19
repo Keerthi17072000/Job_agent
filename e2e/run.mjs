@@ -172,13 +172,18 @@ await test('company lookup: finds a company public board by name, lists every op
   await sec.waitFor({ state: 'detached' }).catch(() => {}); await page.locator('section[aria-label="Openings at TestCo"] button:has-text("Save these jobs")').click(); await toast(page).filter({ hasText: '2 openings saved' }).waitFor();
 });
 
-await test('two profiles on one browser are isolated; switching restores each', async page => {
+await test('profiles: create from the header menu, each keeps its own resume; switch, rename and delete work', async page => {
   await home(page); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
-  await page.goto(BASE + '#/settings'); await page.waitForSelector('text=Profiles on this browser');
-  await page.fill('input[aria-label="New profile name"]', 'Second person'); await page.click('button:has-text("Add")'); await page.waitForSelector('text=Second person');
-  await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Upload your resume, get matched'); // fresh slot: no resume, no jobs
-  await page.goto(BASE + '#/jobs'); await page.waitForSelector('text=Search jobs without a resume');
-  await page.goto(BASE + '#/settings'); await page.locator('li', { hasText: 'Asha Rao' }).locator('button:has-text("Switch")').click();
+  const menu = name => page.getByRole('button', { name: new RegExp('^Profile: ' + name) });
+  await menu('Asha Rao').click(); await page.getByLabel('New profile name').fill('Sherin'); await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.waitForSelector('text=Upload your resume, get matched'); await menu('Sherin').waitFor(); // new profile: no resume, no jobs
+  await uploadAndSearch(page, file('priya.txt', RESUME_NURSE), 'Priya');
+  await menu('Sherin').waitFor(); // a profile named by the user keeps its name after the upload
+  await menu('Sherin').click(); await page.getByRole('menuitemradio', { name: 'Asha Rao' }).click();
+  await page.waitForSelector('text=Hello, Asha'); assert.equal(await page.locator('text=Hello, Priya').count(), 0, 'Asha profile still has only her own resume');
+  await menu('Asha Rao').click(); await page.getByRole('menuitemradio', { name: 'Sherin' }).click(); await page.waitForSelector('text=Hello, Priya');
+  await page.goto(BASE + '#/settings'); const ren = page.getByLabel('Rename profile Sherin'); await ren.fill('Sherin K'); await ren.press('Enter'); await menu('Sherin K').waitFor();
+  await page.getByRole('button', { name: 'Delete' }).last().click(); await page.getByRole('alertdialog').getByRole('button', { name: 'Delete profile' }).click();
   await page.goto(BASE + '#/overview'); await page.waitForSelector('text=Hello, Asha');
 });
 

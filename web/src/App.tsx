@@ -11,6 +11,7 @@ import SourcesView from './views/SourcesView.tsx';
 import SettingsView from './views/SettingsView.tsx';
 import ResumeView from './views/ResumeView.tsx';
 import CompanyView from './views/CompanyView.tsx';
+import ProfileSwitcher from './views/ProfileSwitcher.tsx';
 
 const NAV: [string, string, keyof typeof ICONS][] = [['overview', 'Overview', 'overview'], ['jobs', 'Jobs', 'jobs'], ['saved', 'Saved', 'saved'], ['applications', 'Applications', 'applications'], ['company', 'Company lookup', 'company'], ['resume', 'Resume and ATS score', 'resume'], ['profile', 'Profile', 'profile'], ['sources', 'Sources', 'sources'], ['settings', 'Settings', 'settings']];
 const TITLES: Record<string, string> = { overview: 'Overview', jobs: 'Jobs', saved: 'Saved jobs', applications: 'Applications', company: 'Company lookup', resume: 'Resume and ATS score', profile: 'Profile', sources: 'Sources', settings: 'Settings', job: 'Job details' };
@@ -47,7 +48,7 @@ function Shell() {
       <header className="app-head mx-auto mb-5 flex max-w-[1500px] items-center justify-between gap-3">
         <h1 className="text-3xl font-extrabold md:text-4xl">{TITLES[route] ?? 'Overview'}</h1>
         <div className="flex items-center gap-2">
-          {st?.slots.length ? <span className="hidden rounded-full bg-card px-4 py-2 text-sm font-semibold sm:inline">{st.slot.name}</span> : null}
+          <ProfileSwitcher />
           <button onClick={toggleTheme} aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'} className="grid size-10 place-items-center rounded-full bg-card transition-transform hover:scale-105"><Icon d={dark ? ICONS.sun : ICONS.moon} className="size-4" /></button>
         </div>
       </header>
