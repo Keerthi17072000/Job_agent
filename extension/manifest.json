@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Job Agent",
-  "version": "0.5",
+  "version": "0.6",
   "description": "Lets your Job Agent page read job listings from portals in your own browser, when you ask.",
   "permissions": ["storage"],
   "action": { "default_title": "Job Agent" },

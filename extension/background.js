@@ -1,5 +1,5 @@
 // Listings wait in extension storage until the Job Agent page asks for them. The badge shows how many are waiting.
-const key = u => u.split(/[?#]/)[0];
+const key = u => { const [p, q = ''] = u.split('#')[0].split('?'), j = /(?:^|&)job=([^&]*)/.exec(q); return p + (j ? '?job=' + j[1] : ''); };
 const badge = n => chrome.action.setBadgeText({ text: n ? String(n) : '' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const HOSTS = chrome.runtime.getManifest().content_scripts[0].matches.map(m => new URL(m.replace('*.', 'www.').replace(/\*$/, '')).hostname.replace(/^www\./, ''));

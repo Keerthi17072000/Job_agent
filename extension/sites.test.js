@@ -46,3 +46,15 @@ test('any company careers page: panel is offered by address, menu links are skip
   const { jobs } = extract(doc, loc);
   assert.equal(jobs.length, 2); assert.equal(jobs[0].company, 'Zoho'); assert.equal(jobs[0].source, 'careers'); assert.equal(jobs[0].location, 'INDIA');
 });
+
+test('careers page whose cards are not links: repeated heading blocks become jobs, menus and filters do not', () => {
+  const { doc, loc } = run('https://www.zoho.com/careers/', `<header><a href="/signup.html">Sign up</a><a href="/cpaas/">CPaaS</a></header><h2>Let's work together</h2><div class="filters"><button>All (3)</button></div>
+    <div class="grid"><div class="card"><h3>TH Solution Consultant - EBS</h3><span>BANGKOK NOI, THAILAND</span><p>We are seeking a Solution Consultant to map customer requirements with product capabilities.</p></div>
+    <div class="card"><h3>Technical Support Engineers</h3><span>INDIA</span><p>Provide voice-based support to international and domestic customers over the phone.</p></div>
+    <div class="card"><h3>Sales Executives</h3><span>INDIA</span><p>Build rapport with contacts and understand where the prospect is in the buying process.</p></div></div><footer><h3>Zoho</h3></footer>`);
+  const { jobs, via } = extract(doc, loc);
+  assert.equal(via.structure, 3); assert.equal(jobs.length, 3);
+  assert.deepEqual(jobs.map(j => j.title), ['TH Solution Consultant - EBS', 'Technical Support Engineers', 'Sales Executives']);
+  assert.equal(jobs[0].location, 'BANGKOK NOI, THAILAND'); assert.equal(jobs[1].company, 'Zoho'); assert.match(jobs[1].description, /voice-based support/);
+  assert.equal(new Set(jobs.map(j => j.url)).size, 3); assert.ok(jobs.every(j => j.url.startsWith('https://www.zoho.com/careers/?job=')));
+});

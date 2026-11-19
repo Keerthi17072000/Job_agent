@@ -4,7 +4,8 @@
 (() => {
   const text = (e, sel) => (sel && e.querySelector(sel)?.textContent || '').replace(/\s+/g, ' ').trim();
   const abs = (h, base) => { try { return new URL(h, base).href; } catch { return ''; } };
-  const key = u => u.split(/[?#]/)[0];
+  // listings read from a page's cards share one address and are told apart by ?job=<title>, so that part is kept
+  const key = u => { const [b, q = ''] = u.split('#')[0].split('?'), j = /(?:^|&)job=([^&]*)/.exec(q); return b + (j ? '?job=' + j[1] : ''); };
 
   const SITES = {
     'naukri.com': { source: 'naukri', card: '.srp-jobtuple-wrapper, .jobTuple', title: 'a.title', company: '.comp-name', location: '.loc-wrap', exp: '.exp-wrap', salary: '.sal-wrap', skills: '.tags-gt li', jobUrl: /naukri\.com\/job-listings/ },
@@ -21,7 +22,7 @@
     'cutshort.io': { source: 'cutshort', card: '[class*="job-card"], [class*="jobCard"]', jobUrl: /cutshort\.io\/job\// },
   };
   // Any company's own careers page: found by its address, read from JSON-LD or from links that look like job postings.
-  const CAREERS = { source: 'careers', generic: true, jobUrl: /(job|career|opening|position|vacanc|requisition|posting|apply)/i };
+  const CAREERS = { source: 'careers', generic: true, jobUrl: /(\/jobs?\/|\/openings?\/|\/positions?\/|\/vacanc|requisition|\/postings?\/|job[-_]?id|\/apply\/|\/careers?\/[^/]+\/.+)/i };
   const CAREER_PATH = /(^|\/)(careers?|jobs?|openings?|vacanc\w*|job-openings|join-us|work-with-us)(\/|$)/i, CAREER_HOST = /^(careers?|jobs?)\./i;
   const siteFor = (host, path = '') => { const k = Object.keys(SITES).find(k => host === k || host.endsWith('.' + k)); return k ? SITES[k] : CAREER_PATH.test(path) || CAREER_HOST.test(host) ? CAREERS : null; };
   const orgOf = host => { const p = host.replace(/^(www|careers?|jobs?)\./i, '').split('.'); const n = p.length > 2 && p.at(-1).length === 2 ? p.at(-3) : p.at(-2) || p[0]; return n.charAt(0).toUpperCase() + n.slice(1); };
@@ -46,6 +47,25 @@
     source: site.source, title: text(e, site.title), url: abs(e.querySelector(site.title || 'a')?.getAttribute('href'), base), company: text(e, site.company),
     location: text(e, site.location), exp: text(e, site.exp), salary: text(e, site.salary), skills: site.skills ? [...e.querySelectorAll(site.skills)].map(l => l.textContent.trim()) : [], description: '',
   }));
+
+  // Cards that are not links (a click opens a panel): repeated blocks that each hold one heading. The page address plus ?job=<title> stands in for a link.
+  const HEAD = 'h2,h3,h4,h5,[role="heading"],[class*="title"],[class*="Title"],[class*="job-name"]';
+  const sig = e => e.tagName + '.' + [...e.classList].slice(0, 2).join('.');
+  function structural(doc, site, base) {
+    const heads = [...doc.querySelectorAll(HEAD)].filter(h => !h.closest('header,nav,footer,aside') && h.textContent.trim().length > 3 && h.textContent.trim().length < 140 && !h.querySelector(HEAD));
+    const boxes = heads.map(h => { let b = h; while (b.parentElement && b.parentElement !== doc.body && ![...b.parentElement.querySelectorAll(HEAD)].some(o => o !== h && !h.contains(o) && !b.contains(o))) b = b.parentElement; return { h, b }; })
+      .filter(x => x.b !== x.h && x.b.textContent.length < 1500);
+    const groups = new Map(); for (const x of boxes) { const k = sig(x.b); groups.set(k, [...(groups.get(k) || []), x]); }
+    const best = [...groups.values()].sort((a, b) => b.length - a.length)[0];
+    if (!best || best.length < 2) return [];
+    const page = base.split(/[?#]/)[0];
+    return best.map(({ h, b }) => {
+      const title = h.textContent.replace(/\s+/g, ' ').trim(), rest = [...new Set(leaves(b))].filter(t => t !== title && !NOISE.test(t));
+      const a = [...b.querySelectorAll('a[href]')].map(x => abs(x.getAttribute('href'), base)).find(u => /^https:/.test(u) && key(u) !== key(page) && site.jobUrl.test(u));
+      return { source: site.source, title, url: a || `${page}?job=${encodeURIComponent(title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))}`, company: '',
+        location: rest.find(t => t.length < 60 && /^[A-Za-z .,'/()&-]+$/.test(t) && (t === t.toUpperCase() || /,|remote|hybrid|india|thailand|usa|uk/i.test(t))) || '', skills: [], description: rest.filter(t => t.length > 40).sort((x, y) => y.length - x.length)[0] || '' };
+    });
+  }
 
   const NAV = /^(careers?|jobs?|home|about( us)?|contact( us)?|login|log in|register|sign ?in|sign ?up|search|all jobs|view all.*|privacy.*|terms.*|apply|apply now)$/i;
   const NOISE = /^(apply|apply now|easy apply|save|saved|promoted|new|viewed|actively hiring|be an early applicant|share|hide)$/i;
@@ -77,6 +97,7 @@
     if (!site) return { jobs: [], via: { unsupported: 1 } };
     const base = loc.href, ld = postings(doc).map(p => fromLd(p, site, base)).filter(j => j.title && j.url);
     let cards = fromCards(doc, site, base).filter(j => j.title && j.url && j.company), via = 'cards';
+    if (!cards.length && site.generic && !ld.length) { cards = structural(doc, site, base); via = 'structure'; }
     if (!cards.length) { cards = generic(doc, site, base); via = 'generic'; }
     if (site.generic) for (const j of [...ld, ...cards]) j.company = j.company || orgOf(loc.hostname);
     const seen = new Set(), jobs = [...ld, ...cards].filter(j => { const k = key(j.url); if (seen.has(k)) return false; seen.add(k); return true; });
@@ -98,7 +119,7 @@
     const first = (site.card && doc.querySelector(site.card)) || (links[0] && cardBox(links[0].a, key(links[0].url), links, doc));
     const paths = [...new Set([...doc.querySelectorAll('a[href]')].map(a => { try { return new URL(a.href).pathname.replace(/[0-9a-f-]{8,}|\d+/gi, '#').split('/').slice(0, 3).join('/'); } catch { return ''; } }))].slice(0, 15);
     return [`host: ${loc.hostname}`, `page: ${loc.pathname}`, `jsonld postings: ${postings(doc).length}`, `selector cards: ${site.card ? doc.querySelectorAll(site.card).length : 0}`, `job links: ${links.length}`,
-      `link path shapes: ${paths.join(' ')}`, `first card: ${first ? sketch(first).slice(0, 4000) : 'none found'}`].join('\n');
+      `link path shapes: ${paths.join(' ')}`, `structure cards: ${site.generic ? structural(doc, site, base).length : 0}`, `first card: ${first ? sketch(first).slice(0, 4000) : 'none found'}`].join('\n');
   }
 
   /** Why a page that yielded no jobs is not a results page (login wall, CAPTCHA, verification). Empty string when it is just empty. We never try to get past these. */
