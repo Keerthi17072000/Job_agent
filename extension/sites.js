@@ -24,7 +24,7 @@
   // Any company's own careers page: found by its address, read from JSON-LD or from links that look like job postings.
   const CAREERS = { source: 'careers', generic: true, jobUrl: /(\/jobs?\/|\/openings?\/|\/positions?\/|\/vacanc|requisition|\/postings?\/|job[-_]?id|\/apply\/|\/careers?\/[^/]+\/.+)/i };
   const CAREER_PATH = /(^|\/)(careers?|jobs?|openings?|vacanc\w*|job-openings|join-us|work-with-us)(\/|$)/i, CAREER_HOST = /^(careers?|jobs?)\./i;
-  const siteFor = (host, path = '') => { const k = Object.keys(SITES).find(k => host === k || host.endsWith('.' + k)); return k ? SITES[k] : CAREER_PATH.test(path) || CAREER_HOST.test(host) ? CAREERS : null; };
+  const siteFor = (host, path = '') => { const k = Object.keys(SITES).find(k => host === k || host.endsWith('.' + k)); return k ? SITES[k] : CAREER_PATH.test(path) || CAREER_HOST.test(host) || globalThis.JobAgentForce ? CAREERS : null; }; // JobAgentForce: the user clicked the toolbar icon on this page
   const orgOf = host => { const p = host.replace(/^(www|careers?|jobs?)\./i, '').split('.'); const n = p.length > 2 && p.at(-1).length === 2 ? p.at(-3) : p.at(-2) || p[0]; return n.charAt(0).toUpperCase() + n.slice(1); };
 
   function postings(doc) {
@@ -64,12 +64,15 @@
       return { g, ok: title >= 0.5 || place >= 0.5, score: g.length * (title + place) };
     }).filter(x => x.ok).sort((a, b) => b.score - a.score);
     if (!info.length) return [];
-    const page = base.split(/[?#]/)[0];
-    return info[0].g.map(({ h, b }) => {
-      const title = h.textContent.replace(/\s+/g, ' ').trim(), rest = [...new Set(leaves(b))].filter(t => t !== title && !NOISE.test(t));
+    const best = info[0].g, tag = best[0].b.tagName, page = base.split(/[?#]/)[0];
+    // cards of one list can differ in class (by row, by country): take every other title block of the same tag that also shows a place
+    const more = boxes.filter(x => !best.includes(x) && x.b.tagName === tag && JOB_TITLE.test(x.h.textContent) && leaves(x.b).some(t => t !== x.h.textContent.replace(/\s+/g, ' ').trim() && isPlace(t)));
+    const slug = v => v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return [...best, ...more].map(({ h, b }) => {
+      const title = h.textContent.replace(/\s+/g, ' ').trim(), rest = [...new Set(leaves(b))].filter(t => t !== title && !NOISE.test(t)), location = rest.find(isPlace) || '';
       const a = [...b.querySelectorAll('a[href]')].map(x => abs(x.getAttribute('href'), base)).find(u => /^https:/.test(u) && key(u) !== key(page) && site.jobUrl.test(u));
-      return { source: site.source, title, url: a || `${page}?job=${encodeURIComponent(title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))}`, company: '',
-        location: rest.find(isPlace) || '', skills: [], description: rest.filter(t => t.length > 40).sort((x, y) => y.length - x.length)[0] || '' };
+      return { source: site.source, title, url: a || `${page}?job=${encodeURIComponent(slug(title + ' ' + location))}`, company: '',
+        location, skills: [], description: rest.filter(t => t.length > 40).sort((x, y) => y.length - x.length)[0] || '' };
     });
   }
   function structural(doc, site, base) {

@@ -35,3 +35,12 @@ chrome.runtime.onMessage.addListener((msg, _s, reply) => {
   });
   return true;
 });
+
+// Careers pages are too many to list in the manifest. Clicking the toolbar icon on any page (the user's choice, via activeTab) adds the Send panel to that page.
+chrome.action.onClicked.addListener(async tab => {
+  try {
+    if (!tab.id || !/^https:/.test(tab.url || '')) throw new Error('only https pages');
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => { globalThis.JobAgentForce = true; } });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['sites.js', 'content.js'] });
+  } catch { chrome.action.setBadgeText({ tabId: tab.id, text: '!' }); setTimeout(() => chrome.action.setBadgeText({ tabId: tab.id, text: '' }), 2500); }
+});

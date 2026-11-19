@@ -70,3 +70,13 @@ test('careers page: slogan blocks that repeat more often than the jobs are ignor
   const none = run('https://www.example.com/careers/', `<div class="v"><h3>Putting customers first</h3><p>We believe in doing the right thing for people.</p></div><div class="v"><h3>Redefining capital</h3><p>We believe in doing the right thing for people.</p></div>`);
   assert.equal(extract(none.doc, none.loc).jobs.length, 0);
 });
+
+test('careers list whose cards differ in class still yields every card; same title in two places stays two jobs; toolbar-forced mode works on any host', () => {
+  const card = (cls, t, l) => `<div class="${cls}"><div class="t">${t}</div><div class="loc"><svg></svg><span>${l}</span></div><p>Build rapport with contacts and understand where the prospect is in the buying process.</p></div>`;
+  const { doc, loc } = run('https://careers.acme.example/', `<div class="grid">${card('card a', 'Sales Executives', 'INDIA')}${card('card a', 'Sales Executives', 'THAILAND')}${card('card b', 'Technical Support Engineers', 'INDIA')}${card('card b last', 'Account Manager', 'INDIA')}</div>`);
+  const { jobs } = extract(doc, loc);
+  assert.equal(jobs.length, 4); assert.equal(new Set(jobs.map(j => j.url)).size, 4);
+  const { siteFor } = require('./sites.js');
+  assert.equal(siteFor('www.unknown-corp.example', '/en/home'), null);
+  globalThis.JobAgentForce = true; assert.ok(siteFor('www.unknown-corp.example', '/en/home')); globalThis.JobAgentForce = false;
+});
