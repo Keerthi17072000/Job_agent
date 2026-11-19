@@ -268,5 +268,13 @@ export const api = {
     const list = await store.slots(); if (list.length < 2) { await store.removeSlot(id); return; }
     await store.removeSlot(id); const rest = list.filter(s => s.id !== id); await store.saveSlots(rest); await store.useSlot(rest[0].id);
   },
+  /** Remove one job from the list (it can come back if a later search finds it again). */
+  removeJob: async (id: string) => { await store.set('jobs', (await jobsOf()).filter(j => j.id !== id)); },
+  /** Empty the search results. Jobs you saved or moved past "New" are kept. Returns how many were removed. */
+  clearResults: async () => {
+    const jobs = await jobsOf(), keep = jobs.filter(j => j.saved || j.status !== 'new');
+    await Promise.all([store.set('jobs', keep), store.set('runs', []), store.set('cache', {}), store.set('lastSearch', '')]);
+    return jobs.length - keep.length;
+  },
   clearJobs: async () => { await Promise.all([store.set('jobs', []), store.set('runs', []), store.set('cache', {}), store.set('lastSearch', '')]); },
 };

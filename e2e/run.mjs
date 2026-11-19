@@ -94,6 +94,11 @@ await test('no resume: search by title lists unscored jobs; uploading ranks them
   await page.goto(BASE + '#/jobs'); await page.locator('a.font-extrabold', { hasText: 'Frontend Developer' }).first().waitFor();
   assert.equal(await page.getByLabel('Minimum match').count(), 0, 'no match filter without a resume');
   assert.doesNotMatch(await page.locator('main').innerText(), /Excellent|Strong|Moderate|Weak/, 'no invented match labels');
+  const first = await page.locator('a.font-extrabold').first().innerText(), n0 = await page.locator('a.font-extrabold').count();
+  await page.getByRole('button', { name: /^Remove / }).first().click(); await toast(page).filter({ hasText: 'Job removed' }).waitFor();
+  assert.equal(await page.locator('a.font-extrabold').count(), n0 - 1, 'one job removed');
+  page.once('dialog', d => d.accept()); await page.getByRole('button', { name: 'Clear results' }).click();
+  await page.waitForSelector('text=No jobs yet'); // nothing was saved or tracked, so everything is cleared
   await page.goto(BASE + '#/overview'); await uploadAndSearch(page, file('asha.txt', RESUME_DEV), 'Asha');
   await page.goto(BASE + '#/jobs'); await page.getByLabel('Minimum match').waitFor(); // with a resume: scored, as before
   page.once('dialog', d => d.accept());

@@ -10,6 +10,7 @@ export interface Ctx {
   savePrefs: (p: Prefs) => Promise<void>; saveProfile: (p: Profile, prefs: Prefs) => Promise<void>;
   slotAction: (f: () => Promise<unknown>) => Promise<void>;
   quickSearch: (role: string, location: string, region: string) => Promise<void>; deleteResume: () => Promise<void>;
+  removeJob: (id: string) => Promise<void>; clearResults: () => Promise<void>;
 }
 const C = createContext<Ctx | null>(null);
 export const useApp = () => { const c = useContext(C); if (!c) throw new Error('outside provider'); return c; };
@@ -96,6 +97,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     savePrefs: p => guard('Saving…', async () => { await api.savePrefs(p); return 'Preferences saved and matches updated.'; }),
     saveProfile: (p, prefs) => guard('Saving profile…', async () => { await api.saveProfile(p); await api.savePrefs(prefs); return 'Profile confirmed. All matches were recalculated.'; }),
     quickSearch: async (role, location, region) => { await api.quickQuery(role.trim(), location.trim(), region); await load(); await runScan(true); },
+    removeJob: async id => { await api.removeJob(id); await load(); setMsg('Job removed from the list.'); },
+    clearResults: () => guard('Clearing…', async () => { const n = await api.clearResults(); return n ? `${n} search results cleared. Saved and tracked jobs were kept.` : 'Nothing to clear: only saved and tracked jobs are left.'; }),
     deleteResume: () => guard('Deleting the resume…', async () => { await api.deleteResume(); return 'Resume deleted. You can search without a resume or upload another one.'; }),
     slotAction: f => guard('Working…', async () => { await f(); }),
   };

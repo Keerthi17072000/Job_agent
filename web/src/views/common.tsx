@@ -46,7 +46,7 @@ export function UploadCard({ big }: { big?: boolean }) {
 
 /** One job in a list. */
 export function JobCard({ job, compact }: { job: Job; compact?: boolean }) {
-  const { st, updateJob } = useApp();
+  const { st, updateJob, removeJob } = useApp();
   const chip = (items: string[], tone: 'good' | 'bad' | 'mute') => items.slice(0, 6).map(s => <Badge key={s} tone={tone}>{s}</Badge>);
   return <Card className="lift rise flex gap-4">
     {st?.profile && <ScoreRing score={job.score} />}
@@ -66,6 +66,7 @@ export function JobCard({ job, compact }: { job: Job; compact?: boolean }) {
         <LinkButton href={job.url}>Apply</LinkButton>
         <Button variant={job.saved ? 'lime' : 'outline'} onClick={() => updateJob(job.id, { saved: !job.saved })} aria-pressed={!!job.saved}>{job.saved ? 'Saved' : 'Save'}</Button>
         <Select className="w-40" aria-label="Status" value={job.status} onChange={e => updateJob(job.id, { status: e.target.value as Job['status'] })}>{(st?.prefs ? STATUSES : STATUSES).map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}</Select>
+        <Button variant="ghost" className="h-9 text-bad" aria-label={`Remove ${job.title}`} onClick={() => { if (!job.saved && job.status === 'new' || confirm('This job is saved or tracked. Remove it anyway?')) void removeJob(job.id); }}>Remove</Button>
       </div>
     </div>
   </Card>;

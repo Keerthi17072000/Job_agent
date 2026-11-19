@@ -14,7 +14,7 @@ const SORTS: Record<string, (a: Job, b: Job) => number> = {
 };
 
 export default function JobsView({ savedOnly }: { savedOnly?: boolean }) {
-  const { st, scan } = useApp();
+  const { st, scan, clearResults, busy } = useApp();
   const [f, setF] = useState({ min: -1, region: '', role: '', company: '', location: '', exp: '', salary: false, mode: '', portal: '', posted: '', status: '', skills: '', fit: false, sort: st?.profile ? 'match' : 'newest' });
   const set = (k: keyof typeof f, v: string | number | boolean) => setF(x => ({ ...x, [k]: v }));
   const jobs = st?.jobs ?? [];
@@ -39,6 +39,7 @@ export default function JobsView({ savedOnly }: { savedOnly?: boolean }) {
     {noResume && !savedOnly && <QuickSearch />}
     <Card className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-lg font-extrabold">{savedOnly ? 'Saved jobs' : 'All matches'} <span className="text-mute">({shown.length} of {savedOnly ? jobs.filter(j => j.saved).length : jobs.length})</span></h2>
+        {!savedOnly && jobs.length > 0 && <Button variant="outline" disabled={busy} onClick={() => { if (confirm('Clear all search results? Jobs you saved or tracked are kept.')) void clearResults(); }}>Clear results</Button>}
         <Select className="w-52" aria-label="Sort" value={f.sort} onChange={e => set('sort', e.target.value)}>{!noResume && <option value="match">Sort: highest match</option>}<option value="newest">Sort: newest</option><option value="salary">Sort: highest salary</option><option value="relevant">Sort: most relevant</option><option value="experience">Sort: lowest experience</option></Select></div>
       <details open className="group"><summary className="cursor-pointer text-sm font-semibold text-mute">Filters</summary>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
