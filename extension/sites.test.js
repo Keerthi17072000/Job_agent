@@ -90,3 +90,11 @@ test('accordion careers list: titles ending in a colon are kept (colon removed),
   assert.equal(jobs.length, 7); assert.ok(jobs.some(j => j.title === 'Fresher Python/Odoo Developer') && jobs.some(j => j.title === 'Freelancing Sr. Business Development Executive'));
   assert.ok(jobs.every(j => j.description.length > 20));
 });
+
+test('"Job Title:" prefixes are dropped, other labelled lines are not titles, and a sentence fragment is not a location', () => {
+  const item = (t, extra) => `<div class="acc"><div class="head">${t}</div><div class="body"><p>${extra}</p></div></div>`;
+  const { doc, loc } = run('https://www.acme.example/careers/', `<div>${item('Job Title: Trainer Python/Odoo Developer', 'Teach Python and Odoo to freshers in batches.')}${item('SEO Analyst', 'rankings, traffic, and performance')}${item('Odoo Developer', 'Experience: Odoo Developer with 2 years of work in modules')}${item('Jr. Web developer', 'Build web pages for client projects with HTML and CSS.')}</div>`);
+  const { jobs } = extract(doc, loc);
+  assert.deepEqual(jobs.map(j => j.title), ['Trainer Python/Odoo Developer', 'SEO Analyst', 'Odoo Developer', 'Jr. Web developer']);
+  assert.ok(jobs.every(j => j.location === ''));
+});

@@ -52,7 +52,10 @@
   // A block counts as a job only when its title reads like one (Engineer, Manager, Executive...) or it carries a place; slogans and value statements repeat too, and are skipped.
   const HEAD = 'h2,h3,h4,h5,[role="heading"],[class*="title"],[class*="Title"],[class*="job-name"]';
   const JOB_TITLE = /\b(engineers?|developers?|managers?|executives?|consultants?|analysts?|designers?|specialists?|leads?|directors?|officers?|associates?|architects?|administrators?|coordinators?|representatives?|interns?|internships?|trainees?|scientists?|writers?|accountants?|recruiters?|support|sales|marketing|assistants?|heads?|presidents?|nurses?|teachers?|technicians?|testers?|qa|devops|programmers?|supervisors?|advisors?|agents?|trainers?|researchers?|strategists?|owners?)\b/i;
-  const PLACE = /^[A-Za-z][A-Za-z .,'/()&-]{1,58}$/, isPlace = t => PLACE.test(t) && (t === t.toUpperCase() || /,|remote|hybrid|india|thailand|usa|uk|singapore|dubai|germany|japan|canada/i.test(t));
+  // a place is ALL CAPS, Remote/Hybrid, or names a known country, state or city: a loose rule took skill lists and sentence fragments for locations
+  const PLACE_WORD = /\b(india|thailand|usa|united states|uk|united kingdom|singapore|dubai|uae|germany|japan|canada|australia|netherlands|bengaluru|bangalore|chennai|mumbai|delhi|hyderabad|pune|kolkata|kumbakonam|coimbatore|madurai|trichy|salem|noida|gurgaon|gurugram|ahmedabad|kochi|tamil nadu|karnataka|kerala|maharashtra|telangana|remote|hybrid|work from home|on-?site)\b/i;
+  const isPlace = t => t.length <= 45 && /^[A-Za-z][A-Za-z .,'/()&-]*$/.test(t) && ((t === t.toUpperCase() && t.length > 2) || PLACE_WORD.test(t));
+  const LABEL = /^(experience|location|skills?|responsibilit\w+|qualifications?|requirements?|salary|eligibility|description|about|apply|how to apply)\s*:/i, TITLE_PREFIX = /^(job title|position|role|designation)\s*:\s*/i;
   const sig = e => e.tagName + '.' + [...e.classList].slice(0, 2).join('.');
   const INLINE = /^(SPAN|B|I|EM|STRONG|A|BR|SVG|SMALL|ABBR)$/i;
   function groupCards(doc, site, base, heads) {
@@ -69,7 +72,7 @@
     const more = boxes.filter(x => !best.includes(x) && x.b.tagName === tag && JOB_TITLE.test(x.h.textContent) && leaves(x.b).some(t => t !== x.h.textContent.replace(/\s+/g, ' ').trim() && isPlace(t)));
     const slug = v => v.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     return [...best, ...more].map(({ h, b }) => {
-      const title = h.textContent.replace(/\s+/g, ' ').replace(/[:+\s]+$/, ''), rest = [...new Set(leaves(b))].filter(t => t !== h.textContent.replace(/\s+/g, ' ').trim() && !NOISE.test(t)), location = rest.find(isPlace) || '';
+      const title = h.textContent.replace(/\s+/g, ' ').replace(TITLE_PREFIX, '').replace(/[:+\s]+$/, ''), rest = [...new Set(leaves(b))].filter(t => t !== h.textContent.replace(/\s+/g, ' ').trim() && !NOISE.test(t)), location = rest.find(isPlace) || '';
       const a = [...b.querySelectorAll('a[href]')].map(x => abs(x.getAttribute('href'), base)).find(u => /^https:/.test(u) && key(u) !== key(page) && site.jobUrl.test(u));
       return { source: site.source, title, url: a || `${page}?job=${encodeURIComponent(slug(title + ' ' + location))}`, company: '',
         location, skills: [], description: rest.filter(t => t.length > 40).sort((x, y) => y.length - x.length)[0] || '' };
@@ -79,7 +82,7 @@
     const ok = e => !e.closest('header,nav,footer,aside'), txt = e => e.textContent.replace(/\s+/g, ' ').trim();
     const flat = e => ![...e.children].some(c => !INLINE.test(c.tagName));
     // by title words: any small element whose text reads like a job title, whatever tag or class the site uses
-    const titles = [...doc.querySelectorAll('body *')].filter(e => ok(e) && flat(e) && txt(e).length > 5 && txt(e).length <= 120 && txt(e).split(' ').length <= 14 && !/[.!?]$/.test(txt(e)) && JOB_TITLE.test(txt(e)));
+    const titles = [...doc.querySelectorAll('body *')].filter(e => ok(e) && flat(e) && txt(e).length > 5 && txt(e).length <= 120 && txt(e).split(' ').length <= 14 && !/[.!?]$/.test(txt(e)) && !LABEL.test(txt(e)) && JOB_TITLE.test(txt(e)));
     const deepest = titles.filter(e => !titles.some(o => o !== e && e.contains(o)));
     const byTitle = groupCards(doc, site, base, deepest);
     if (byTitle.length) return byTitle;
