@@ -1,6 +1,6 @@
 // Adds a small panel on supported portals. Nothing is read until you click Send; nothing loads pages for you.
 const S = globalThis.JobAgentSites;
-if (S.siteFor(location.hostname)) {
+if (S.siteFor(location.hostname, location.pathname)) {
   // The Job Agent app can ask this page for its listings (it opened the tab because YOU clicked Search there).
   chrome.runtime.onMessage.addListener((m, _s, reply) => {
     if (m?.type !== 'extract') return;

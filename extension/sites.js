@@ -20,7 +20,11 @@
     'instahyre.com': { source: 'instahyre', card: '[class*="employer-block"], [class*="job-card"]', jobUrl: /instahyre\.com\/job-/ },
     'cutshort.io': { source: 'cutshort', card: '[class*="job-card"], [class*="jobCard"]', jobUrl: /cutshort\.io\/job\// },
   };
-  const siteFor = host => { const k = Object.keys(SITES).find(k => host === k || host.endsWith('.' + k)); return k ? SITES[k] : null; };
+  // Any company's own careers page: found by its address, read from JSON-LD or from links that look like job postings.
+  const CAREERS = { source: 'careers', generic: true, jobUrl: /(job|career|opening|position|vacanc|requisition|posting|apply)/i };
+  const CAREER_PATH = /(^|\/)(careers?|jobs?|openings?|vacanc\w*|job-openings|join-us|work-with-us)(\/|$)/i, CAREER_HOST = /^(careers?|jobs?)\./i;
+  const siteFor = (host, path = '') => { const k = Object.keys(SITES).find(k => host === k || host.endsWith('.' + k)); return k ? SITES[k] : CAREER_PATH.test(path) || CAREER_HOST.test(host) ? CAREERS : null; };
+  const orgOf = host => { const p = host.replace(/^(www|careers?|jobs?)\./i, '').split('.'); const n = p.length > 2 && p.at(-1).length === 2 ? p.at(-3) : p.at(-2) || p[0]; return n.charAt(0).toUpperCase() + n.slice(1); };
 
   function postings(doc) {
     const out = [];
@@ -43,6 +47,7 @@
     location: text(e, site.location), exp: text(e, site.exp), salary: text(e, site.salary), skills: site.skills ? [...e.querySelectorAll(site.skills)].map(l => l.textContent.trim()) : [], description: '',
   }));
 
+  const NAV = /^(careers?|jobs?|home|about( us)?|contact( us)?|login|log in|register|sign ?in|sign ?up|search|all jobs|view all.*|privacy.*|terms.*|apply|apply now)$/i;
   const NOISE = /^(apply|apply now|easy apply|save|saved|promoted|new|viewed|actively hiring|be an early applicant|share|hide)$/i;
   const leaves = el => [...el.querySelectorAll('*')].filter(e => !e.children.length).map(e => e.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean);
   function jobLinks(doc, site, base) {
@@ -58,20 +63,22 @@
     for (const { a, url } of links) {
       const k = key(url); if (seen.has(k)) continue; seen.add(k);
       const title = a.textContent.replace(/\s+/g, ' ').trim();
+      if (site.generic && (NAV.test(title) || k === key(base))) continue; // menu links and the page itself
       const rest = [...new Set(leaves(cardBox(a, k, links, doc)))].filter(t => t !== title && !NOISE.test(t) && t.length < 90);
-      out.push({ source: site.source, title, url, company: rest[0] || '', exp: rest.find(t => /\d+\s*-\s*\d+\s*(yrs?|years)/i.test(t)) || '',
-        location: rest.find(t => /,|remote|hybrid|india|bengaluru|bangalore|mumbai|delhi|pune|hyderabad|chennai|gurgaon|noida/i.test(t) && t !== rest[0]) || '', skills: [], description: '' });
+      out.push({ source: site.source, title, url, company: site.generic ? orgOf(new URL(base).hostname) : rest[0] || '', exp: rest.find(t => /\d+\s*-\s*\d+\s*(yrs?|years)/i.test(t)) || '',
+        location: rest.find(t => /,|remote|hybrid|india|bengaluru|bangalore|mumbai|delhi|pune|hyderabad|chennai|gurgaon|noida/i.test(t) && (site.generic || t !== rest[0])) || '', skills: [], description: '' });
     }
     return out;
   }
 
   /** All jobs found on this page, with which strategy produced them. */
   function extract(doc, loc) {
-    const site = siteFor(loc.hostname);
+    const site = siteFor(loc.hostname, loc.pathname);
     if (!site) return { jobs: [], via: { unsupported: 1 } };
     const base = loc.href, ld = postings(doc).map(p => fromLd(p, site, base)).filter(j => j.title && j.url);
     let cards = fromCards(doc, site, base).filter(j => j.title && j.url && j.company), via = 'cards';
     if (!cards.length) { cards = generic(doc, site, base); via = 'generic'; }
+    if (site.generic) for (const j of [...ld, ...cards]) j.company = j.company || orgOf(loc.hostname);
     const seen = new Set(), jobs = [...ld, ...cards].filter(j => { const k = key(j.url); if (seen.has(k)) return false; seen.add(k); return true; });
     return { jobs, via: { jsonld: ld.length, [via]: cards.length } };
   }
@@ -85,7 +92,7 @@
     return `<${t}${attrs ? ' ' + attrs : ''}>${own ? `[${own}c]` : ''}${[...el.children].map(c => sketch(c, d + 1)).join('')}</${t}>`;
   };
   function diagnose(doc, loc) {
-    const site = siteFor(loc.hostname);
+    const site = siteFor(loc.hostname, loc.pathname);
     if (!site) return `Unsupported host ${loc.hostname}`;
     const base = loc.href, links = jobLinks(doc, site, base);
     const first = (site.card && doc.querySelector(site.card)) || (links[0] && cardBox(links[0].a, key(links[0].url), links, doc));

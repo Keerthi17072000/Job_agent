@@ -38,3 +38,11 @@ test('blocked(): login walls and verification pages are recognised so the extens
   const b = run('https://www.naukri.com/react-jobs', '<h1>Please verify you are human to continue</h1>'); assert.match(blocked(b.doc, b.loc), /login or verification/);
   const c = run('https://www.naukri.com/react-jobs', '<p>No jobs matched your search.</p>'); assert.equal(blocked(c.doc, c.loc), '');
 });
+
+test('any company careers page: panel is offered by address, menu links are skipped, jobs get the company from the host', () => {
+  const { siteFor } = require('./sites.js');
+  assert.ok(siteFor('www.zoho.com', '/careers/')); assert.ok(siteFor('careers.acme.com', '/')); assert.equal(siteFor('www.example.com', '/blog'), null);
+  const { doc, loc } = run('https://www.zoho.com/careers/', `<nav><a href="/careers/">Careers</a><a href="/about">About</a></nav><div class="c"><a href="/careers/jobs/sales-exec-1">Sales Executives</a><span>INDIA</span></div><div class="c"><a href="/careers/jobs/support-eng-2">Technical Support Engineers</a><span>INDIA</span></div>`);
+  const { jobs } = extract(doc, loc);
+  assert.equal(jobs.length, 2); assert.equal(jobs[0].company, 'Zoho'); assert.equal(jobs[0].source, 'careers'); assert.equal(jobs[0].location, 'INDIA');
+});

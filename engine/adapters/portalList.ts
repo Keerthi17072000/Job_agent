@@ -20,4 +20,4 @@ export const PORTALS: Portal[] = [
   { id: 'instahyre', name: 'Instahyre', extension: true, note: 'Jobs are visible only after login.', searchUrl: r => `https://www.instahyre.com/search-jobs/?job_title=${q(r)}` },
   { id: 'cutshort', name: 'Cutshort', extension: true, note: 'Jobs are visible only after login.', searchUrl: r => `https://cutshort.io/jobs?query=${q(r)}` },
 ];
-export const portalName = (id: string) => PORTALS.find(p => p.id === id)?.name ?? id;
+export const portalName = (id: string) => id === 'careers' ? 'Careers page' : PORTALS.find(p => p.id === id)?.name ?? id;
